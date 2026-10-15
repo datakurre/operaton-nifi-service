@@ -1,6 +1,6 @@
 {
   "name": "Operaton NiFi Worker",
-  "image": "ghcr.io/cachix/devenv/devcontainer:v1.11.2",
+  "image": "ghcr.io/cachix/devenv/devcontainer:latest",
   "overrideCommand": false,
   "postCreateCommand": "direnv allow",
   "updateContentCommand": "devenv shell -- true",

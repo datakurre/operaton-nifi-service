@@ -79,7 +79,7 @@ NiFi's autoload directory on startup.
 
 ## GitHub Codespaces
 
-This repository includes a `.devcontainer.json` configuration based on the devenv devcontainer image (`ghcr.io/cachix/devenv/devcontainer:v1.11.2`) with Direnv and Java extensions pre-configured.
+This repository includes a `.devcontainer.json` configuration based on the devenv devcontainer image (`ghcr.io/cachix/devenv/devcontainer:latest`, currently `v2.4.0`) with Direnv and Java extensions pre-configured.
 
 When launched in Codespaces:
 - Ports 8080 (Operaton), 8081 (NiFi), and 8200 (Vault) are forwarded automatically.
