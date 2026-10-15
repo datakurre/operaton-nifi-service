@@ -1,0 +1,11 @@
+__pycache__
+.idea
+.coverage
+.venv
+*.log
+.env
+.devenv*
+.pre-commit-config.yaml
+devenv.local.nix
+docs/
+target/
