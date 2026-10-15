@@ -77,3 +77,13 @@ HTTP with no authentication (local development only) and keeps its state in
 `.devenv/state/nifi`. Built NARs in `narPaths` are automatically deployed to
 NiFi's autoload directory on startup.
 
+## GitHub Codespaces
+
+This repository includes a `.devcontainer.json` configuration based on the devenv devcontainer image (`ghcr.io/cachix/devenv/devcontainer:v1.11.2`) with Direnv and Java extensions pre-configured.
+
+When launched in Codespaces:
+- Ports 8080 (Operaton), 8081 (NiFi), and 8200 (Vault) are forwarded automatically.
+- NiFi (`nifi.web.proxy.host`) and Operaton (`forwardHeadersStrategy = "native"`) are configured to support Codespaces' forwarded reverse-proxy URLs out of the box.
+- Run `devenv up` inside the terminal to boot the full stack.
+
+

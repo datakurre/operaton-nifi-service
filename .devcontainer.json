@@ -1,0 +1,34 @@
+{
+  "name": "Operaton NiFi Worker",
+  "image": "ghcr.io/cachix/devenv/devcontainer:v1.11.2",
+  "overrideCommand": false,
+  "postCreateCommand": "direnv allow",
+  "updateContentCommand": "devenv shell -- true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bbenoist.Nix",
+        "mkhl.direnv",
+        "vscjava.vscode-java-pack",
+        "redhat.vscode-xml",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ]
+    }
+  },
+  "forwardPorts": [8080, 8081, 8200],
+  "portsAttributes": {
+    "8080": {
+      "label": "Operaton BPM",
+      "onAutoForward": "notify"
+    },
+    "8081": {
+      "label": "Apache NiFi",
+      "onAutoForward": "notify"
+    },
+    "8200": {
+      "label": "HashiCorp Vault",
+      "onAutoForward": "silent"
+    }
+  }
+}

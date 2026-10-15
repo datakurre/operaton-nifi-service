@@ -9,3 +9,4 @@ __pycache__
 devenv.local.nix
 docs/
 target/
+.direnv/
