@@ -645,16 +645,28 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
 
     for conn in connections:
         try:
+            cid = conn["id"]
+            drop = request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests", data=b"", method="POST")
+            if drop and "dropRequest" in drop:
+                drop_id = drop["dropRequest"]["id"]
+                request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests/{drop_id}", method="DELETE")
+        except Exception:
+            pass
+        try:
+            c_fresh = request(f"{nifi_addr}/nifi-api/connections/{conn['id']}")
+            ver = c_fresh["revision"]["version"] if c_fresh else conn["revision"]["version"]
             request(
-                f"{nifi_addr}/nifi-api/connections/{conn['id']}?version={conn['revision']['version']}",
+                f"{nifi_addr}/nifi-api/connections/{conn['id']}?version={ver}",
                 method="DELETE",
             )
         except Exception:
             pass
     for proc in processors:
         try:
+            p_fresh = request(f"{nifi_addr}/nifi-api/processors/{proc['id']}")
+            ver = p_fresh["revision"]["version"] if p_fresh else proc["revision"]["version"]
             request(
-                f"{nifi_addr}/nifi-api/processors/{proc['id']}?version={proc['revision']['version']}",
+                f"{nifi_addr}/nifi-api/processors/{proc['id']}?version={ver}",
                 method="DELETE",
             )
         except Exception:

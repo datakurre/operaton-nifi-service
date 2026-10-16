@@ -13,3 +13,4 @@ target/
 .direnv/
 site/
 docs/screencast/*.png
+scratch/
