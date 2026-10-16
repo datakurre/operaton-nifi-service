@@ -7,6 +7,9 @@ __pycache__
 .devenv*
 .pre-commit-config.yaml
 devenv.local.nix
-docs/
+docs/images/
+docs/screencast/take-*/
+docs/screencast/recordings/
 target/
 .direnv/
+site/
