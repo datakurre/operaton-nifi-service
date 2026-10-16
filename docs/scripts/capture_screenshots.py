@@ -99,7 +99,8 @@ def capture_nifi(page, nifi_url: str, output_dir: str):
 
     # Navigate directly to Root Process Group Controller Services
     try:
-        root_info = api_get(f"{DEFAULT_NIFI_API}/flow/process-groups/root")
+        nifi_api = nifi_url.rstrip("/").replace("/nifi", "") + "/nifi-api"
+        root_info = api_get(f"{nifi_api}/flow/process-groups/root")
         root_id = root_info["processGroupFlow"]["breadcrumb"]["breadcrumb"]["id"]
         cs_url = f"{nifi_url}/#/process-groups/{root_id}/controller-services"
         print(f"Navigating to NiFi Controller Services: {cs_url}...")
@@ -133,9 +134,6 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
         page.goto(cockpit_login_url, wait_until="load", timeout=30000)
 
     page.wait_for_timeout(2000)
-    login_shot = os.path.join(output_dir, "03-operaton-login.png")
-    page.screenshot(path=login_shot)
-    print(f"  Captured: {login_shot}")
 
     try:
         user_input = page.locator('input[name="username"], input[ng-model="username"]').first
@@ -158,7 +156,8 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
 
     # Navigate to the deployed 'demo-process' Process Definition runtime diagram view
     try:
-        defs = api_get(f"{DEFAULT_OPERATON_REST}/process-definition?key=demo-process&latestVersion=true", "admin:admin")
+        operaton_rest = operaton_url.rstrip("/").replace("/operaton", "") + "/engine-rest"
+        defs = api_get(f"{operaton_rest}/process-definition?key=demo-process&latestVersion=true", "admin:admin")
         if defs:
             proc_def_id = defs[0]["id"]
             diagram_url = f"{operaton_url}/app/cockpit/default/#/process-definition/{proc_def_id}/runtime"
@@ -178,14 +177,17 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
         page.goto(tasklist_url, wait_until="load", timeout=20000)
         page.wait_for_timeout(3500)
         task_item = page.get_by_text("Manual Order Review").first
-        if task_item.is_visible():
+        try:
+            task_item.wait_for(state="visible", timeout=6000)
             task_item.click()
             page.wait_for_timeout(1500)
             load_vars = page.get_by_text("Load Variables").first
             if load_vars.is_visible():
                 load_vars.click()
                 page.wait_for_timeout(1500)
-        tasklist_shot = os.path.join(output_dir, "05-operaton-tasklist.png")
+        except Exception:
+            pass
+        tasklist_shot = os.path.join(output_dir, "06-operaton-tasklist.png")
         page.screenshot(path=tasklist_shot)
         print(f"  Captured: {tasklist_shot}")
     except Exception as e:
@@ -217,7 +219,7 @@ def capture_vault(page, vault_url: str, output_dir: str):
                         if operaton_entry.is_visible():
                             operaton_entry.click()
                             page.wait_for_timeout(2000)
-        vault_shot = os.path.join(output_dir, "06-vault-ui.png")
+        vault_shot = os.path.join(output_dir, "07-vault-ui.png")
         page.screenshot(path=vault_shot)
         print(f"  Captured: {vault_shot}")
     except Exception as e:

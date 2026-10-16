@@ -49,13 +49,13 @@ The BPMN model (`deployment/demo-process.bpmn`) represents a realistic order pro
 
 1. **Start Event (`Order Received`)**: Triggered when a new order is received with payload variables (`orderId`, `amount`, `currency`, `customer`, `itemCount`).
 2. **Service Task (`Validate & Enrich Order`)**: Topic `demo`. NiFi fetches and validates the order structure and values.
-   - **Error Boundary Event (`Invalid Order`)**: Catches `VALIDATION_ERROR` (code: `VALIDATION_ERROR`) and routes to immediate cancellation.
+   - **Error Boundary Event (`Invalid Order`)**: Catches `VALIDATION_ERROR` (code: `VALIDATION_ERROR`) and routes to `Manual Order Review` for human inspection.
 3. **Exclusive Gateway (`High-Value (>= $500)?`)**:
    - Orders under $500 proceed directly to payment.
    - Orders of $500 or more require deep compliance and fraud inspection.
 4. **Service Task (`Fraud & Compliance Check`)**: Topic `order-fraud-check`. NiFi performs deep risk scoring and inspection.
    - **Error Boundary Event (`Fraud Suspected`)**: Catches `FRAUD_DETECTED` (code: `FRAUD_DETECTED`) and routes to human intervention.
-5. **User Task (`Manual Order Review`)**: Assigned to candidate groups `accounting, sales` (and admin). Human operators inspect flagged transactions in Operaton Tasklist.
+5. **User Task (`Manual Order Review`)**: Assigned to candidate groups `accounting, sales` (and candidate user `admin`). Human operators inspect flagged transactions in Operaton Tasklist.
 6. **Exclusive Gateway (`Approved?`)**: Routes approved orders to payment, or rejected orders to `Order Rejected`.
 7. **Service Tasks (`Charge Payment & Invoice` and `Dispatch Shipment`)**: Topics `order-payment` and `order-shipment`. NiFi coordinates billing and dispatch.
 8. **End Event (`Order Fulfilled`)**: Successfully closes the order.
@@ -79,7 +79,7 @@ Extract Order Attributes (EvaluateJsonPath)
          ▼
 Validate Order Rules (RouteOnAttribute)
     ├── [valid]   → Enrich Order Metadata (UpdateAttribute) → CompleteExternalTask
-    └── [invalid] → HandleExternalTaskBpmnError (errorCode: VALIDATION_ERROR)
+    └── [invalid] → HandleValidationError (HandleExternalTaskBpmnError: VALIDATION_ERROR)
 ```
 
 - **`FetchAndLockExternalTasks`**: Polls topic `demo` with Simple JSON serialization. Each order instance becomes a NiFi FlowFile with order variables as JSON body and Operaton metadata as FlowFile attributes (`${operaton.externalTask.id}`, `${operaton.externalTask.businessKey}`, etc.).
@@ -88,9 +88,9 @@ Validate Order Rules (RouteOnAttribute)
   ```
   ${amount:gt(0):and(${customer:isEmpty():not()})}
   ```
-- **`UpdateAttribute`**: Adds enrichment attributes (`validated = true`, `processedBy = nifi-worker`).
+- **`UpdateAttribute`**: Adds enrichment attributes (`validation.status = VALIDATED`, `validation.worker = nifi-worker`).
 - **`CompleteExternalTask`**: Submits the enriched payload back to Operaton, advancing the process instance.
-- **`HandleExternalTaskBpmnError`**: If invalid, throws BPMN error `VALIDATION_ERROR` caught by the task's boundary event.
+- **`HandleValidationError`**: If invalid, throws BPMN error `VALIDATION_ERROR` caught by the task's boundary event.
 
 ### Column 2: Fraud & Compliance Deep Inspection
 
@@ -98,17 +98,21 @@ Validate Order Rules (RouteOnAttribute)
 Fetch Fraud Check Tasks (topic: order-fraud-check)
          │ (success)
          ▼
-ExtendExternalTaskLock (duration: 5 min)
+Extract Fraud Check Attributes (EvaluateJsonPath)
+         │ (matched)
+         ▼
+ExtendExternalTaskLock (duration: 10 min)
          │ (success)
          ▼
 Evaluate Fraud Risk (RouteOnAttribute)
     ├── [low_risk]  → Complete Fraud Check (CompleteExternalTask)
-    └── [high_risk] → HandleExternalTaskBpmnError (errorCode: FRAUD_DETECTED)
+    └── [high_risk] → HandleFraudBpmnError (HandleExternalTaskBpmnError: FRAUD_DETECTED)
 ```
 
-- **`ExtendExternalTaskLock`**: For intensive checks (such as external risk APIs or ML inference), extends the lock duration so the lock does not expire while processing.
-- **`RouteOnAttribute`**: Evaluates whether the transaction exceeds risk limits (`${amount:ge(10000)}`).
-- **`HandleExternalTaskBpmnError`**: High-risk orders are escalated to the BPMN error boundary event with code `FRAUD_DETECTED`, setting variables `fraudReason` and `flaggedBy`. Operaton immediately routes the token to the **Manual Order Review** user task.
+- **`Extract Fraud Check Attributes`**: Extracts `$.orderId` and `$.amount` from the task payload into attributes for downstream routing.
+- **`ExtendExternalTaskLock`**: For intensive checks (such as external risk APIs or ML inference), extends the lock duration to 10 minutes so the lock does not expire while processing.
+- **`RouteOnAttribute`**: Evaluates whether the transaction exceeds risk limits (`${order.amount:toNumber():gt(10000)}`).
+- **`HandleFraudBpmnError`**: High-risk orders are escalated to the BPMN error boundary event with code `FRAUD_DETECTED`, setting variables `fraudReason` and `flaggedBy`. Operaton immediately routes the token to the **Manual Order Review** user task.
 
 ### Column 3: Payment, Shipment & Incident Handling
 
@@ -130,7 +134,7 @@ Fetch Shipment Tasks (topic: order-shipment) ┘         │ (failure)
 
 Credentials are never hardcoded. They are dynamically sourced from HashiCorp Vault KV-v2:
 
-![HashiCorp Vault Secret Overview](images/06-vault-ui.png)
+![HashiCorp Vault Secret Overview](images/07-vault-ui.png)
 
 1. **Vault KV-v2 Secret (`secret/operaton`)**:
    Contains `url`, `worker_id`, `username`, and `password`.
@@ -158,11 +162,11 @@ The preconfiguration script (`docs/scripts/setup_demo_instance.py`) seeds 5 real
 
 | Business Key | Customer | Amount | Stage / State | What to Observe |
 | :--- | :--- | :--- | :--- | :--- |
-| **`ORD-1000`** | Ada Lovelace | $249.00 | **Completed (Fulfilled)** | Historical completed instance in Cockpit and history log. |
-| **`ORD-1001`** | Charles Babbage | $120.00 | **Active at Validation** | Token waiting at `Validate & Enrich Order` (topic `demo`). |
-| **`ORD-1002`** | Grace Hopper | $2,450.00 | **Active at Fraud Check** | Token routed past gateway to `Fraud & Compliance Check`. |
-| **`ORD-1003`** | Alan Turing | $18,500.00 | **Escalated to Human Task** | High risk triggered `FRAUD_DETECTED`; token active in Tasklist. |
-| **`ORD-1004`** | Margaret Hamilton | $680.00 | **Incident (Retries = 0)** | Technical failure in Payment; red incident badge in Cockpit. |
+| **`ORD-1000`** | Edsger Dijkstra | €89.00 | **Completed (Fulfilled)** | Historical completed instance in Cockpit and history log. |
+| **`ORD-1001`** | Ada Lovelace | €149.99 | **Active at Validation** | Token waiting at `Validate & Enrich Order` (topic `demo`). |
+| **`ORD-1002`** | Grace Hopper | €2,450.00 | **Active at Fraud Check** | Token routed past gateway to `Fraud & Compliance Check`. |
+| **`ORD-1003`** | Alan Turing | €18,500.00 | **Escalated to Human Task** | High risk triggered `FRAUD_DETECTED`; token active in Tasklist. |
+| **`ORD-1004`** | Margaret Hamilton | €680.00 | **Incident (Retries = 0)** | Technical failure in Payment; red incident badge in Cockpit. |
 
 ### Operaton Cockpit Dashboard
 
@@ -172,9 +176,9 @@ The Cockpit dashboard displays real-time health metrics: 4 running instances, 1 
 
 ### Human-in-the-Loop Tasklist
 
-Orders flagged with `FRAUD_DETECTED` (such as `ORD-1003` for $18,500.00) appear in Operaton Tasklist with all process variables and reasons intact:
+Orders flagged with `FRAUD_DETECTED` (such as `ORD-1003` for €18,500.00) appear in Operaton Tasklist with all process variables and reasons intact:
 
-![Operaton Tasklist Manual Review](images/05-operaton-tasklist.png)
+![Operaton Tasklist Manual Review](images/06-operaton-tasklist.png)
 
 ---
 

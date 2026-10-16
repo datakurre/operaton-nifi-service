@@ -633,6 +633,16 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         print("Multi-stage Order Fulfillment NiFi flow is already configured.")
         return
 
+    try:
+        request(
+            f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}",
+            data={"id": root_id, "state": "STOPPED"},
+            method="PUT",
+        )
+        time.sleep(1)
+    except Exception:
+        pass
+
     for conn in connections:
         try:
             request(
@@ -735,6 +745,21 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         },
         auto_term=["success"],
     )
+    bpmn_validation_error = _create_processor(
+        nifi_addr,
+        root_id,
+        "HandleValidationError",
+        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
+        operaton_bundle,
+        80,
+        1040,
+        {
+            "External Task Service": operaton_service_id,
+            "Error Code": "VALIDATION_ERROR",
+            "Error Message": "Order ${order.id} failed validation rules",
+        },
+        auto_term=["success"],
+    )
 
     # --- Column 2 (x=580): Stage 2 - High-Value Fraud & Compliance (topic: order-fraud-check) ---
     fetch_fraud = _create_processor(
@@ -750,6 +775,22 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
             "Topic Name": "order-fraud-check",
         },
     )
+    eval_fraud_json = _create_processor(
+        nifi_addr,
+        root_id,
+        "Extract Fraud Check Attributes",
+        "org.apache.nifi.processors.standard.EvaluateJsonPath",
+        standard_bundle,
+        580,
+        240,
+        {
+            "Destination": "flowfile-attribute",
+            "order.id": "$.orderId",
+            "order.amount": "$.amount",
+            "order.customer": "$.customer",
+        },
+        auto_term=["failure", "unmatched"],
+    )
     extend_lock = _create_processor(
         nifi_addr,
         root_id,
@@ -757,7 +798,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         "org.operaton.bpm.extension.nifi.processor.ExtendExternalTaskLock",
         operaton_bundle,
         580,
-        240,
+        440,
         {
             "External Task Service": operaton_service_id,
             "Lock Duration": "10 min",
@@ -771,7 +812,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         "org.apache.nifi.processors.standard.RouteOnAttribute",
         standard_bundle,
         580,
-        440,
+        640,
         {
             "Routing Strategy": "Route to Property name",
             "fraud_suspected": "${order.amount:toNumber():gt(10000)}",
@@ -784,20 +825,20 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
         operaton_bundle,
         580,
-        640,
+        840,
         {
             "External Task Service": operaton_service_id,
         },
         auto_term=["success"],
     )
-    bpmn_error = _create_processor(
+    bpmn_fraud_error = _create_processor(
         nifi_addr,
         root_id,
-        "HandleExternalTaskBpmnError",
+        "HandleFraudBpmnError",
         "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
         operaton_bundle,
         580,
-        840,
+        1040,
         {
             "External Task Service": operaton_service_id,
             "Error Code": "FRAUD_DETECTED",
@@ -867,42 +908,44 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
     _connect(nifi_addr, root_id, eval_json, route_validate, ["matched"])
     _connect(nifi_addr, root_id, route_validate, enrich_order, ["unmatched"])
     _connect(nifi_addr, root_id, enrich_order, complete_validate, ["success"])
+    _connect(nifi_addr, root_id, route_validate, bpmn_validation_error, ["invalid"])
     _connect(
         nifi_addr,
         root_id,
-        route_validate,
-        bpmn_error,
-        ["invalid"],
-        bends=[{"x": 490, "y": 580}],
+        bpmn_validation_error,
+        handle_failure,
+        ["failure"],
+        bends=[{"x": 480, "y": 1090}],
     )
-
-    # Connect Column 2
-    _connect(nifi_addr, root_id, fetch_fraud, extend_lock, ["success"])
-    _connect(nifi_addr, root_id, extend_lock, route_fraud, ["success"])
-    _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
-    _connect(
-        nifi_addr,
-        root_id,
-        route_fraud,
-        bpmn_error,
-        ["fraud_suspected"],
-        bends=[{"x": 1000, "y": 690}],
-    )
-
-    # Connect Column 3 & Failure Handling
-    _connect(nifi_addr, root_id, fetch_payment, complete_fulfillment, ["success"])
-    _connect(nifi_addr, root_id, fetch_shipment, complete_fulfillment, ["success"])
-    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure"])
-    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure"])
-    _connect(nifi_addr, root_id, bpmn_error, handle_failure, ["failure"])
     _connect(
         nifi_addr,
         root_id,
         complete_validate,
         handle_failure,
         ["failure"],
-        bends=[{"x": 760, "y": 1030}],
+        bends=[{"x": 760, "y": 890}],
     )
+
+    # Connect Column 2
+    _connect(nifi_addr, root_id, fetch_fraud, eval_fraud_json, ["success"])
+    _connect(nifi_addr, root_id, eval_fraud_json, extend_lock, ["matched"])
+    _connect(nifi_addr, root_id, extend_lock, route_fraud, ["success"])
+    _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
+    _connect(nifi_addr, root_id, route_fraud, bpmn_fraud_error, ["fraud_suspected"])
+    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure"])
+    _connect(
+        nifi_addr,
+        root_id,
+        bpmn_fraud_error,
+        handle_failure,
+        ["failure"],
+        bends=[{"x": 980, "y": 1090}],
+    )
+
+    # Connect Column 3 & Failure Handling
+    _connect(nifi_addr, root_id, fetch_payment, complete_fulfillment, ["success"])
+    _connect(nifi_addr, root_id, fetch_shipment, complete_fulfillment, ["success"])
+    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure"])
 
     print("Created 3-stage Order Fulfillment & Fraud Compliance flow in NiFi.")
 

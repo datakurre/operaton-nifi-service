@@ -10,7 +10,6 @@
 
   <bpmn:error id="Error_Validation" name="ValidationError" errorCode="VALIDATION_ERROR" />
   <bpmn:error id="Error_Fraud" name="FraudDetected" errorCode="FRAUD_DETECTED" />
-  <bpmn:error id="Error_Payment" name="PaymentFailed" errorCode="PAYMENT_FAILED" />
 
   <bpmn:process id="demo-process" name="NiFi External Task Demo" isExecutable="true" camunda:historyTimeToLive="180" camunda:versionTag="2.0">
     <bpmn:startEvent id="StartEvent_1" name="Order Received">
@@ -55,7 +54,7 @@
       <bpmn:errorEventDefinition id="ErrorDef_Fraud" errorRef="Error_Fraud" />
     </bpmn:boundaryEvent>
 
-    <bpmn:userTask id="Task_ManualReview" name="Manual Order Review" camunda:assignee="admin" camunda:candidateGroups="accounting,sales">
+    <bpmn:userTask id="Task_ManualReview" name="Manual Order Review" camunda:candidateUsers="admin" camunda:candidateGroups="accounting,sales">
       <bpmn:incoming>Flow_ValidationToReview</bpmn:incoming>
       <bpmn:incoming>Flow_FraudToReview</bpmn:incoming>
       <bpmn:outgoing>Flow_ToReviewGateway</bpmn:outgoing>

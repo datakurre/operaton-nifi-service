@@ -37,11 +37,14 @@ def reset_operaton_and_nifi():
     )
     for inst in instances:
         inst_id = inst["id"]
-        request(
-            f"{OPERATON_REST}/process-instance/{inst_id}?skipCustomListeners=true",
-            headers=headers,
-            method="DELETE",
-        )
+        try:
+            request(
+                f"{OPERATON_REST}/process-instance/{inst_id}?skipCustomListeners=true",
+                headers=headers,
+                method="DELETE",
+            )
+        except Exception:
+            pass
     bpmn_path = os.path.join(ROOT_DIR, "deployment", "demo-process.bpmn")
     with open(bpmn_path, "rb") as f:
         bpmn_bytes = f.read()
