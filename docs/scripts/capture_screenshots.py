@@ -74,10 +74,13 @@ def capture_nifi(page, nifi_url: str, output_dir: str):
 
     page.wait_for_timeout(3500)
 
-    # Collapse Navigation and Operation drawers so the canvas has full width, then fit
+    # Click Fit first while navigation controls are visible, then hide panels for clear capture
     try:
+        fit_btn = page.locator('button[title="Fit"], button:has(.fa-expand)').first
+        if fit_btn.is_visible():
+            fit_btn.click()
+            page.wait_for_timeout(1000)
         page.evaluate("""() => {
-            const nav = document.querySelector('#navigation-control button, .nav-resizer button, button:has(.fa-minus-square-o)');
             const drawers = document.querySelectorAll('button[title="Hide navigation"], button[title="Hide operation"], .dock-panel-resizer');
             drawers.forEach(d => d.click());
             const navPanel = document.querySelector('#navigation-control, .navigation-control');
@@ -86,10 +89,6 @@ def capture_nifi(page, nifi_url: str, output_dir: str):
             if (opPanel) opPanel.style.display = 'none';
         }""")
         page.wait_for_timeout(500)
-        fit_btn = page.locator('button[title="Fit"], button:has(.fa-expand)').first
-        if fit_btn.is_visible():
-            fit_btn.click()
-            page.wait_for_timeout(1000)
     except Exception as e:
         print(f"Notice adjusting NiFi canvas viewport: {e}")
 
