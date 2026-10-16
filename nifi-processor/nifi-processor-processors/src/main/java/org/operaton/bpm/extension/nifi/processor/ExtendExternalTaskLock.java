@@ -21,7 +21,8 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 @Tags({"operaton", "bpmn", "external task", "workflow", "lock"})
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 @CapabilityDescription("Extends the lock of a locked Operaton external task, e.g. before a "
-        + "long running step of the flow.")
+        + "long running step of the flow. Not needed when Automatic Lock Extension is enabled on the "
+        + "External Task Service.")
 @SeeAlso({FetchAndLockExternalTasks.class, UnlockExternalTask.class})
 @ReadsAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id (default)")
 @WritesAttributes({

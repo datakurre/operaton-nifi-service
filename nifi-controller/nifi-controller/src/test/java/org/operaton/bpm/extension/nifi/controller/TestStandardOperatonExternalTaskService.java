@@ -2,6 +2,7 @@ package org.operaton.bpm.extension.nifi.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,6 +15,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.oauth2.AccessToken;
 import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
@@ -46,8 +51,10 @@ public class TestStandardOperatonExternalTaskService {
     private final List<Request> requests = new ArrayList<>();
     private final List<TokenRequest> tokenRequests = new ArrayList<>();
     private HttpServer server;
-    private int responseStatus;
-    private String responseBody;
+    private volatile int responseStatus;
+    private volatile String responseBody;
+    /** Response statuses overriding {@link #responseStatus} by request path. */
+    private final Map<String, Integer> responseStatusByPath = new ConcurrentHashMap<>();
     private int tokenResponseStatus;
     private String tokenResponseBody;
 
@@ -84,6 +91,8 @@ public class TestStandardOperatonExternalTaskService {
 
         runner = TestRunners.newTestRunner(TestProcessor.class);
         service = new StandardOperatonExternalTaskService();
+        // Tests extend locks explicitly with a fake clock
+        service.setLockExtensionInterval(Duration.ofDays(1).toMillis());
         runner.addControllerService("operaton", service);
         runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL,
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/engine-rest/");
@@ -104,7 +113,9 @@ public class TestStandardOperatonExternalTaskService {
         }
         byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(responseStatus, out.length == 0 ? -1 : out.length);
+        exchange.sendResponseHeaders(
+                responseStatusByPath.getOrDefault(exchange.getRequestURI().getPath(), responseStatus),
+                out.length == 0 ? -1 : out.length);
         if (out.length > 0) {
             exchange.getResponseBody().write(out);
         }
@@ -673,6 +684,233 @@ public class TestStandardOperatonExternalTaskService {
                 () -> service.extendLock("task-1", 1000));
 
         assertEquals(0, e.getStatusCode());
+    }
+
+    private static final long T0 = 1_000_000_000L;
+    private static final long LOCK_DURATION = 60_000;
+
+    private final AtomicLong now = new AtomicLong(T0);
+
+    private void enableAutomaticLockExtension(String maxLockLifetime) {
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTOMATIC_LOCK_EXTENSION, "true");
+        if (maxLockLifetime != null) {
+            runner.setProperty(service, StandardOperatonExternalTaskService.MAX_LOCK_LIFETIME, maxLockLifetime);
+        }
+        service.setClock(now::get);
+        runner.enableControllerService(service);
+    }
+
+    private void fetchTasks(String... taskIds) throws OperatonException {
+        fetchTasks(LOCK_DURATION, taskIds);
+    }
+
+    private void fetchTasks(long lockDuration, String... taskIds) throws OperatonException {
+        StringBuilder tasks = new StringBuilder("[");
+        for (String taskId : taskIds) {
+            tasks.append(tasks.length() > 1 ? "," : "")
+                    .append("{\"id\": \"").append(taskId).append("\", \"topicName\": \"nifi\"}");
+        }
+        responseStatus = 200;
+        responseBody = tasks.append("]").toString();
+        service.fetchAndLock("nifi", taskIds.length, lockDuration, null, 0);
+        responseStatus = 204;
+        responseBody = "";
+    }
+
+    private List<Request> extendLockRequests() {
+        synchronized (requests) {
+            return requests.stream().filter(r -> r.path().endsWith("/extendLock")).toList();
+        }
+    }
+
+    /** Advance the clock and extend due locks as the background thread would. */
+    private void extendLocksAt(long time) {
+        now.set(time);
+        service.extendDueLocks(time);
+    }
+
+    @Test
+    public void testAutomaticLockExtensionIsDisabledByDefault() throws Exception {
+        service.setClock(now::get);
+        runner.enableControllerService(service);
+        fetchTasks("task-1");
+
+        assertEquals(0, service.getLeases().size());
+        extendLocksAt(T0 + 10 * LOCK_DURATION);
+        assertTrue(extendLockRequests().isEmpty());
+    }
+
+    @Test
+    public void testAutomaticLockExtension() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+
+        extendLocksAt(T0 + LOCK_DURATION / 2 - 1);
+        assertTrue(extendLockRequests().isEmpty());
+
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+        Request request = lastRequest();
+        assertEquals("/engine-rest/external-task/task-1/extendLock", request.path());
+        assertEquals("worker-1", request.body().get("workerId").asText());
+        assertEquals(LOCK_DURATION, request.body().get("newDuration").asLong());
+        assertEquals(T0 + LOCK_DURATION / 2 + LOCK_DURATION, service.getLeases().get("task-1").expiresAt());
+
+        // Not due again until half way through the extended lock
+        extendLocksAt(T0 + LOCK_DURATION - 1);
+        assertEquals(1, extendLockRequests().size());
+        extendLocksAt(T0 + LOCK_DURATION);
+        assertEquals(2, extendLockRequests().size());
+    }
+
+    @Test
+    public void testFinishedTasksAreNoLongerExtended() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1", "task-2", "task-3", "task-4", "task-5");
+        assertEquals(5, service.getLeases().size());
+
+        service.complete("task-1", null, null);
+        service.handleFailure("task-2", "boom", null, 1, 0);
+        service.handleBpmnError("task-3", "E1", null, null);
+        service.unlock("task-4");
+
+        assertEquals(1, service.getLeases().size());
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+        assertEquals(List.of("/engine-rest/external-task/task-5/extendLock"),
+                extendLockRequests().stream().map(Request::path).toList());
+    }
+
+    @Test
+    public void testFailedCompletionKeepsExtendingLock() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        responseStatus = 500;
+
+        assertThrows(OperatonException.class, () -> service.complete("task-1", null, null));
+
+        assertNotNull(service.getLeases().get("task-1"));
+    }
+
+    @Test
+    public void testMaxLockLifetime() throws Exception {
+        enableAutomaticLockExtension("90 sec");
+        fetchTasks("task-1");
+
+        // Extended only up to the max lifetime
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+        assertEquals(90_000 - LOCK_DURATION / 2, lastRequest().body().get("newDuration").asLong());
+
+        // Then left to expire
+        extendLocksAt(T0 + 90_000 - LOCK_DURATION / 2);
+        assertNull(service.getLeases().get("task-1"));
+        extendLocksAt(T0 + 10 * LOCK_DURATION);
+        assertEquals(1, extendLockRequests().size());
+    }
+
+    @Test
+    public void testExplicitExtendLockPostponesAutomaticExtension() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+
+        service.extendLock("task-1", 10 * LOCK_DURATION);
+
+        extendLocksAt(T0 + LOCK_DURATION);
+        assertEquals(1, extendLockRequests().size());
+        assertEquals(T0 + 10 * LOCK_DURATION, service.getLeases().get("task-1").expiresAt());
+    }
+
+    @Test
+    public void testLostLockIsNoLongerExtended() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        responseStatus = 404;
+        responseBody = "{\"type\": \"InvalidRequestException\", \"message\": \"not found\"}";
+
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+
+        assertNull(service.getLeases().get("task-1"));
+        extendLocksAt(T0 + 10 * LOCK_DURATION);
+        assertEquals(1, extendLockRequests().size());
+    }
+
+    @Test
+    public void testUnavailableEngineRetriesExtension() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        responseStatus = 503;
+
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+        assertEquals(T0 + LOCK_DURATION, service.getLeases().get("task-1").expiresAt());
+
+        responseStatus = 204;
+        extendLocksAt(T0 + LOCK_DURATION / 2 + 1000);
+        assertEquals(T0 + LOCK_DURATION / 2 + 1000 + LOCK_DURATION,
+                service.getLeases().get("task-1").expiresAt());
+    }
+
+    @Test
+    public void testFailingTaskDoesNotBlockOtherExtensions() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        now.set(T0 + 1000);
+        fetchTasks("task-2");
+        responseStatusByPath.put("/engine-rest/external-task/task-1/extendLock", 403);
+
+        extendLocksAt(T0 + 1000 + LOCK_DURATION / 2);
+
+        assertEquals(List.of("/engine-rest/external-task/task-1/extendLock",
+                        "/engine-rest/external-task/task-2/extendLock"),
+                extendLockRequests().stream().map(Request::path).toList());
+        assertEquals(T0 + LOCK_DURATION, service.getLeases().get("task-1").expiresAt());
+        assertEquals(T0 + 1000 + LOCK_DURATION / 2 + LOCK_DURATION,
+                service.getLeases().get("task-2").expiresAt());
+    }
+
+    @Test
+    public void testUnavailableEngineEndsExtensionRound() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1", "task-2");
+        responseStatus = 503;
+
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+
+        assertEquals(1, extendLockRequests().size());
+    }
+
+    @Test
+    public void testShortLocksAreNotExtended() throws Exception {
+        enableAutomaticLockExtension(null);
+
+        fetchTasks(2000, "task-1");
+
+        assertEquals(0, service.getLeases().size());
+    }
+
+    @Test
+    public void testLeasesAreRestoredAfterRestart() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        extendLocksAt(T0);
+
+        runner.disableControllerService(service);
+        assertEquals("60000,1000000000,1000060000",
+                runner.getStateManager(service).getState(Scope.LOCAL).get("task-1"));
+        assertEquals(0, service.getLeases().size());
+
+        runner.enableControllerService(service);
+        extendLocksAt(T0 + LOCK_DURATION / 2);
+        assertEquals("/engine-rest/external-task/task-1/extendLock", lastRequest().path());
+    }
+
+    @Test
+    public void testStateIsClearedWhenAutomaticLockExtensionIsTurnedOff() throws Exception {
+        enableAutomaticLockExtension(null);
+        fetchTasks("task-1");
+        runner.disableControllerService(service);
+
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTOMATIC_LOCK_EXTENSION, "false");
+        runner.enableControllerService(service);
+
+        assertTrue(runner.getStateManager(service).getState(Scope.LOCAL).toMap().isEmpty());
     }
 
     public static class MockOAuth2AccessTokenProvider extends AbstractControllerService

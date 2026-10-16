@@ -8,13 +8,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
@@ -30,6 +35,7 @@ import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.expression.ExpressionLanguageScope;
@@ -41,7 +47,10 @@ import org.apache.nifi.processor.util.StandardValidators;
 @CapabilityDescription("Operaton External Task client using the Operaton REST API "
         + "(fetch and lock, complete, failure, BPMN error, extend lock, unlock). "
         + "Supports dynamic OAuth2 service account (client_credentials), OAuth2 Access Token Provider, "
-        + "static Bearer token, and HTTP Basic authentication.")
+        + "static Bearer token, and HTTP Basic authentication. Optionally extends the locks of fetched "
+        + "tasks automatically until they are completed, failed or unlocked.")
+@Stateful(scopes = Scope.LOCAL, description = "With Automatic Lock Extension, the external tasks locked "
+        + "by this node and their lock durations, so that their locks are still extended after a restart.")
 public class StandardOperatonExternalTaskService extends AbstractControllerService
         implements OperatonExternalTaskService {
 
@@ -147,8 +156,36 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
             .build();
 
+    public static final PropertyDescriptor AUTOMATIC_LOCK_EXTENSION = new PropertyDescriptor.Builder()
+            .name("Automatic Lock Extension")
+            .description("When true, the locks of fetched external tasks are extended in the background "
+                    + "by their fetch Lock Duration whenever half of it has passed, until the task is "
+                    + "completed, failed, has thrown a BPMN error or is unlocked. Flows then need no "
+                    + "ExtendExternalTaskLock steps for long running processing.")
+            .required(true)
+            .allowableValues("true", "false")
+            .defaultValue("false")
+            .build();
+
+    public static final PropertyDescriptor MAX_LOCK_LIFETIME = new PropertyDescriptor.Builder()
+            .name("Max Lock Lifetime")
+            .description("How long after fetching locks are extended at most. Bounds how long a task "
+                    + "stays locked when its FlowFile is dropped without finishing the task, "
+                    + "e.g. by an auto-terminated relationship.")
+            .required(true)
+            .defaultValue("1 hour")
+            .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
+            .dependsOn(AUTOMATIC_LOCK_EXTENSION, "true")
+            .build();
+
     /** Maximum length of an error response body included in exception messages. */
     private static final int MAX_ERROR_LENGTH = 500;
+
+    /** How often locks due for automatic extension are looked for. */
+    private static final long LOCK_EXTENSION_INTERVAL_MILLIS = 1000;
+
+    /** Shorter locks could expire between two rounds of automatic extension. */
+    private static final long MIN_EXTENDED_LOCK_DURATION_MILLIS = 3 * LOCK_EXTENSION_INTERVAL_MILLIS;
 
     private static final List<PropertyDescriptor> PROPERTIES = List.of(
             REST_URL,
@@ -161,7 +198,9 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             BEARER_TOKEN,
             USERNAME,
             PASSWORD,
-            REQUEST_TIMEOUT);
+            REQUEST_TIMEOUT,
+            AUTOMATIC_LOCK_EXTENSION,
+            MAX_LOCK_LIFETIME);
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -173,6 +212,21 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     private volatile OAuth2AccessTokenProvider oauth2Provider;
     private volatile OAuth2TokenManager tokenManager;
     private volatile String staticAuthorization;
+
+    private final ExternalTaskLeases leases = new ExternalTaskLeases();
+    private volatile LongSupplier clock = System::currentTimeMillis;
+    private volatile boolean automaticLockExtension;
+    private volatile long maxLockLifetime;
+    private volatile ScheduledExecutorService lockExtender;
+    private volatile boolean extending;
+    private volatile long lockExtensionInterval = LOCK_EXTENSION_INTERVAL_MILLIS;
+    private final Object[] taskLocks = new Object[64];
+
+    {
+        for (int i = 0; i < taskLocks.length; i++) {
+            taskLocks[i] = new Object();
+        }
+    }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
@@ -239,6 +293,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
     @OnEnabled
     public void onEnabled(final ConfigurationContext context) {
+        // In case a previous enabling failed without the service being disabled
+        stopLockExtension();
         String url = context.getProperty(REST_URL).evaluateAttributeExpressions().getValue();
         baseUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
         workerId = context.getProperty(WORKER_ID).evaluateAttributeExpressions().getValue();
@@ -284,10 +340,64 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 }
             }
         }
+
+        startLockExtension(context);
+    }
+
+    private void startLockExtension(final ConfigurationContext context) {
+        automaticLockExtension = context.getProperty(AUTOMATIC_LOCK_EXTENSION).asBoolean();
+        maxLockLifetime = automaticLockExtension
+                ? context.getProperty(MAX_LOCK_LIFETIME).asTimePeriod(TimeUnit.MILLISECONDS) : 0;
+        try {
+            Map<String, String> state = getStateManager().getState(Scope.LOCAL).toMap();
+            if (automaticLockExtension) {
+                int invalid = leases.load(state);
+                if (invalid > 0) {
+                    getLogger().warn("Skipped {} invalid external task lock entries in local state", invalid);
+                }
+            } else if (!state.isEmpty()) {
+                // Do not resume extending stale locks when automatic extension is enabled again later
+                getStateManager().clear(Scope.LOCAL);
+            }
+        } catch (IOException e) {
+            getLogger().warn("Failed to restore external task locks to extend from local state", e);
+        }
+        if (automaticLockExtension) {
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "Operaton External Task Lock Extension " + getIdentifier());
+                thread.setDaemon(true);
+                return thread;
+            });
+            extending = true;
+            executor.scheduleWithFixedDelay(this::extendLocks, lockExtensionInterval,
+                    lockExtensionInterval, TimeUnit.MILLISECONDS);
+            lockExtender = executor;
+        }
+    }
+
+    private void stopLockExtension() {
+        extending = false;
+        ScheduledExecutorService executor = lockExtender;
+        lockExtender = null;
+        if (executor != null) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(requestTimeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            persistLeases();
+        }
+        leases.clear();
+        automaticLockExtension = false;
     }
 
     @OnDisabled
     public void onDisabled() {
+        stopLockExtension();
         HttpClient httpClient = client;
         client = null;
         if (httpClient != null) {
@@ -308,6 +418,99 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
     void setTokenManager(OAuth2TokenManager tokenManager) {
         this.tokenManager = tokenManager;
+    }
+
+    void setClock(LongSupplier clock) {
+        this.clock = clock;
+    }
+
+    ExternalTaskLeases getLeases() {
+        return leases;
+    }
+
+    void setLockExtensionInterval(long lockExtensionInterval) {
+        this.lockExtensionInterval = lockExtensionInterval;
+    }
+
+    private void extendLocks() {
+        try {
+            extendDueLocks(clock.getAsLong());
+        } catch (RuntimeException e) {
+            // An exception would cancel the scheduled task
+            getLogger().error("Failed to extend external task locks", e);
+        }
+    }
+
+    /**
+     * Extend the locks that are half way through their duration, up to the Max Lock Lifetime,
+     * the soonest expiring first. Synchronized so that rounds do not overlap.
+     */
+    synchronized void extendDueLocks(long now) {
+        for (Map.Entry<String, ExternalTaskLeases.Lease> entry : leases.due(now)) {
+            if (!extending) {
+                break;
+            }
+            String taskId = entry.getKey();
+            synchronized (taskLock(taskId)) {
+                // Re-read, as the task may have been finished or its lock extended meanwhile
+                ExternalTaskLeases.Lease lease = leases.get(taskId);
+                if (lease == null || lease.renewAt() > now) {
+                    continue;
+                }
+                long newExpiresAt = Math.min(now + lease.lockDuration(), lease.lockedAt() + maxLockLifetime);
+                if (newExpiresAt <= lease.expiresAt()) {
+                    if (leases.remove(taskId, lease)) {
+                        getLogger().warn("Stopped extending the lock of external task {} after Max Lock "
+                                + "Lifetime; it expires at {}. Was its FlowFile dropped without finishing "
+                                + "the task?", taskId, Instant.ofEpochMilli(lease.expiresAt()));
+                    }
+                    continue;
+                }
+                // Bound the request so that one slow call does not delay the other extensions
+                Duration timeout = Duration.ofMillis(Math.min(requestTimeout.toMillis(),
+                        Math.max(lease.lockDuration() / 4, LOCK_EXTENSION_INTERVAL_MILLIS)));
+                try {
+                    postExtendLock(taskId, newExpiresAt - now, timeout);
+                    leases.renew(taskId, lease, newExpiresAt);
+                } catch (OperatonException e) {
+                    int status = e.getStatusCode();
+                    if (status == 400 || status == 404) {
+                        // The task is gone, or its lock expired or was taken by another worker
+                        if (leases.remove(taskId, lease)) {
+                            getLogger().warn("Stopped extending the lock of external task {}: {}",
+                                    taskId, e.getMessage());
+                        }
+                    } else {
+                        getLogger().warn("Failed to extend the lock of external task {}, will retry: {}",
+                                taskId, e.getMessage());
+                        if (status == 0 || status == 502 || status == 503 || status == 504) {
+                            // Operaton is unavailable; retry all due locks on the next round
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        persistLeases();
+    }
+
+    /**
+     * @return a lock serializing extensions of the same task by the processors and automatically
+     */
+    private Object taskLock(String taskId) {
+        return taskLocks[Math.floorMod(taskId.hashCode(), taskLocks.length)];
+    }
+
+    private synchronized void persistLeases() {
+        if (!leases.takeDirty()) {
+            return;
+        }
+        try {
+            getStateManager().setState(leases.toState(), Scope.LOCAL);
+        } catch (IOException e) {
+            leases.markDirty();
+            getLogger().warn("Failed to store external task locks to extend in local state", e);
+        }
     }
 
     @Override
@@ -386,6 +589,16 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 tasks.add(toExternalTask(task));
             }
         }
+        if (automaticLockExtension && !tasks.isEmpty()) {
+            if (query.lockDuration() < MIN_EXTENDED_LOCK_DURATION_MILLIS) {
+                getLogger().warn("Not extending locks of {} tasks of topic {} automatically: Lock Duration "
+                        + "{} ms is shorter than {} ms", tasks.size(), query.topicName(),
+                        query.lockDuration(), MIN_EXTENDED_LOCK_DURATION_MILLIS);
+            } else {
+                long now = clock.getAsLong();
+                tasks.forEach(task -> leases.register(task.id(), query.lockDuration(), now));
+            }
+        }
         return tasks;
     }
 
@@ -396,6 +609,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         putVariables(body, "variables", variablesJson);
         putVariables(body, "localVariables", localVariablesJson);
         post(taskPath(taskId, "complete"), body, requestTimeout);
+        leases.release(taskId);
     }
 
     @Override
@@ -418,6 +632,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         putVariables(body, "variables", variablesJson);
         putVariables(body, "localVariables", localVariablesJson);
         post(taskPath(taskId, "failure"), body, requestTimeout);
+        leases.release(taskId);
     }
 
     @Override
@@ -429,19 +644,29 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 .put("errorMessage", errorMessage);
         putVariables(body, "variables", variablesJson);
         post(taskPath(taskId, "bpmnError"), body, requestTimeout);
+        leases.release(taskId);
     }
 
     @Override
     public void extendLock(String taskId, long newDuration) throws OperatonException {
+        // Not interleaved with an automatic extension, which could shorten the lock again
+        synchronized (taskLock(taskId)) {
+            postExtendLock(taskId, newDuration, requestTimeout);
+            leases.extended(taskId, newDuration, clock.getAsLong());
+        }
+    }
+
+    private void postExtendLock(String taskId, long newDuration, Duration timeout) throws OperatonException {
         ObjectNode body = mapper.createObjectNode()
                 .put("workerId", workerId)
                 .put("newDuration", newDuration);
-        post(taskPath(taskId, "extendLock"), body, requestTimeout);
+        post(taskPath(taskId, "extendLock"), body, timeout);
     }
 
     @Override
     public void unlock(String taskId) throws OperatonException {
         post(taskPath(taskId, "unlock"), mapper.createObjectNode(), requestTimeout);
+        leases.release(taskId);
     }
 
     private static String taskPath(String taskId, String action) throws OperatonException {

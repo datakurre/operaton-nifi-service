@@ -32,7 +32,8 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 @CapabilityDescription("Fetches and locks Operaton external tasks of a topic and emits one FlowFile "
         + "per task with the fetched process variables as JSON content. Finish each task with "
         + "CompleteExternalTask, HandleExternalTaskFailure or HandleExternalTaskBpmnError before "
-        + "its lock expires, or the task will be fetched again.")
+        + "its lock expires, or the task will be fetched again. Locks can be extended with "
+        + "ExtendExternalTaskLock or by Automatic Lock Extension of the External Task Service.")
 @SeeAlso({CompleteExternalTask.class, HandleExternalTaskFailure.class,
         HandleExternalTaskBpmnError.class, ExtendExternalTaskLock.class, UnlockExternalTask.class})
 @WritesAttributes({
