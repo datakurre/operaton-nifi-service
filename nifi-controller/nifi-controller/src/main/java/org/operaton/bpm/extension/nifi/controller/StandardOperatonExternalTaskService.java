@@ -96,6 +96,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .description("OAuth2 Client Secret for service account authentication")
             .required(false)
             .sensitive(true)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .dependsOn(OAUTH2_CLIENT_ID)
             .build();
@@ -115,6 +116,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                     + "service account / provider is not configured; takes precedence over Username/Password.")
             .required(false)
             .sensitive(true)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
             .build();
 
@@ -131,6 +133,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .description("Password for HTTP basic authentication")
             .required(false)
             .sensitive(true)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .dependsOn(USERNAME)
             .build();
@@ -179,9 +182,17 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     @Override
     protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
         final List<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
+
         final boolean hasEndpoint = validationContext.getProperty(OAUTH2_TOKEN_ENDPOINT).isSet();
         final boolean hasClientId = validationContext.getProperty(OAUTH2_CLIENT_ID).isSet();
         final boolean hasClientSecret = validationContext.getProperty(OAUTH2_CLIENT_SECRET).isSet();
+        final boolean hasScope = validationContext.getProperty(OAUTH2_SCOPE).isSet();
+
+        final boolean hasProvider = validationContext.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).isSet();
+        final boolean hasDirectOAuth2 = hasEndpoint || hasClientId || hasClientSecret;
+        final boolean hasBearer = validationContext.getProperty(BEARER_TOKEN).isSet();
+        final boolean hasUsername = validationContext.getProperty(USERNAME).isSet();
+        final boolean hasPassword = validationContext.getProperty(PASSWORD).isSet();
 
         if (hasEndpoint || hasClientId || hasClientSecret) {
             if (!hasEndpoint || !hasClientId || !hasClientSecret) {
@@ -192,6 +203,37 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                         .build());
             }
         }
+
+        if (hasScope && !hasEndpoint) {
+            results.add(new ValidationResult.Builder()
+                    .subject("OAuth2 Scope")
+                    .valid(false)
+                    .explanation("OAuth2 Scope cannot be configured without OAuth2 Token Endpoint.")
+                    .build());
+        }
+
+        if (hasPassword && !hasUsername) {
+            results.add(new ValidationResult.Builder()
+                    .subject("Password")
+                    .valid(false)
+                    .explanation("Password cannot be configured without Username.")
+                    .build());
+        }
+
+        int authCount = (hasProvider ? 1 : 0)
+                + (hasDirectOAuth2 ? 1 : 0)
+                + (hasBearer ? 1 : 0)
+                + ((hasUsername || hasPassword) ? 1 : 0);
+
+        if (authCount > 1) {
+            results.add(new ValidationResult.Builder()
+                    .subject("Authentication Configuration")
+                    .valid(false)
+                    .explanation("Only one authentication method may be configured: OAuth2 Access Token Provider, "
+                            + "Direct OAuth2 Service Account, Bearer Token, or HTTP Basic Authentication.")
+                    .build());
+        }
+
         return results;
     }
 
@@ -217,7 +259,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             oauth2Provider = null;
             String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
             String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
-            String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).getValue();
+            String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
             String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
 
             if (tokenEndpoint != null && !tokenEndpoint.isBlank()
@@ -228,12 +270,12 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 staticAuthorization = null;
             } else {
                 tokenManager = null;
-                String bearerToken = context.getProperty(BEARER_TOKEN).getValue();
+                String bearerToken = context.getProperty(BEARER_TOKEN).evaluateAttributeExpressions().getValue();
                 String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
                 if (bearerToken != null && !bearerToken.isBlank()) {
                     staticAuthorization = "Bearer " + bearerToken.trim();
                 } else if (username != null) {
-                    String password = context.getProperty(PASSWORD).getValue();
+                    String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
                     String credentials = username + ":" + (password == null ? "" : password);
                     staticAuthorization = "Basic " + Base64.getEncoder()
                             .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
@@ -427,15 +469,17 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     }
 
     private String getAuthorizationHeader() throws OperatonException {
-        if (oauth2Provider != null) {
-            AccessToken details = oauth2Provider.getAccessDetails();
+        OAuth2AccessTokenProvider provider = this.oauth2Provider;
+        if (provider != null) {
+            AccessToken details = provider.getAccessDetails();
             if (details == null || details.getAccessToken() == null || details.getAccessToken().isBlank()) {
                 throw new OperatonException("OAuth2 Access Token Provider returned an empty access token", 0);
             }
             return "Bearer " + details.getAccessToken().trim();
         }
-        if (tokenManager != null) {
-            return "Bearer " + tokenManager.getAccessToken();
+        OAuth2TokenManager tm = this.tokenManager;
+        if (tm != null) {
+            return "Bearer " + tm.getAccessToken();
         }
         return staticAuthorization;
     }
@@ -478,11 +522,15 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
         int status = response.statusCode();
         if (status == 401 && retryOnUnauthorized) {
-            if (oauth2Provider != null) {
-                oauth2Provider.refreshAccessDetails();
+            OAuth2AccessTokenProvider provider = this.oauth2Provider;
+            OAuth2TokenManager tm = this.tokenManager;
+            if (provider != null) {
+                provider.refreshAccessDetails();
                 return post(path, body, timeout, false);
-            } else if (tokenManager != null) {
-                tokenManager.invalidate();
+            } else if (tm != null) {
+                String usedToken = authHeader != null && authHeader.startsWith("Bearer ")
+                        ? authHeader.substring(7).trim() : null;
+                tm.invalidate(usedToken);
                 return post(path, body, timeout, false);
             }
         }

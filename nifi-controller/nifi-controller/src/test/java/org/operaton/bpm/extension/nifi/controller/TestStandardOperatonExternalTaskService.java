@@ -481,6 +481,87 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
+    public void testOAuth2RetryFailsWhenRefreshedTokenAlsoRejected() {
+        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
+        runner.enableControllerService(service);
+
+        // Operaton rejects all tokens with 401
+        server.removeContext("/engine-rest");
+        server.createContext("/engine-rest", exchange -> {
+            byte[] in = exchange.getRequestBody().readAllBytes();
+            synchronized (requests) {
+                requests.add(new Request(exchange.getRequestURI().getPath(),
+                        exchange.getRequestHeaders().getFirst("Authorization"),
+                        in.length == 0 ? null : MAPPER.readTree(in)));
+            }
+            byte[] out = "{\"message\": \"Invalid credentials\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(401, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+
+        OperatonException e = assertThrows(OperatonException.class,
+                () -> service.extendLock("task-1", 1000));
+        assertEquals(401, e.getStatusCode());
+        // Must strictly stop after 1 retry (initial + 1 retry = 2 calls)
+        assertEquals(2, requests.size());
+    }
+
+    @Test
+    public void testAuthenticationMutualExclusivityValidation() {
+        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+
+        // Direct OAuth2 + Bearer Token -> invalid
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-id");
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret");
+        runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "static-token");
+        runner.assertNotValid(service);
+
+        // Bearer Token + Basic Auth -> invalid
+        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT);
+        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID);
+        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET);
+        runner.setProperty(service, StandardOperatonExternalTaskService.USERNAME, "user");
+        runner.setProperty(service, StandardOperatonExternalTaskService.PASSWORD, "pass");
+        runner.assertNotValid(service);
+
+        // Password without Username -> invalid
+        runner.removeProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN);
+        runner.removeProperty(service, StandardOperatonExternalTaskService.USERNAME);
+        runner.assertNotValid(service);
+
+        // Scope without Endpoint -> invalid
+        runner.removeProperty(service, StandardOperatonExternalTaskService.PASSWORD);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_SCOPE, "read");
+        runner.assertNotValid(service);
+    }
+
+    @Test
+    public void testOAuth2AccessTokenProviderReturnsBlankTokenThrows() throws Exception {
+        MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider() {
+            @Override
+            public AccessToken getAccessDetails() {
+                return new AccessToken("", null, "Bearer", 3600L, null);
+            }
+        };
+        runner.addControllerService("blank-provider", provider);
+        runner.enableControllerService(provider);
+
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "blank-provider");
+        runner.enableControllerService(service);
+
+        OperatonException e = assertThrows(OperatonException.class,
+                () -> service.extendLock("task-1", 1000));
+        assertEquals(0, e.getStatusCode());
+        assertTrue(e.getMessage().contains("empty access token"));
+    }
+
+    @Test
     public void testFetchAndLockExtendedQuery() throws Exception {
         runner.enableControllerService(service);
         responseStatus = 200;

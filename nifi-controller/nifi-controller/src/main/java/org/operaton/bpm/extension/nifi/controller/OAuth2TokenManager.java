@@ -24,6 +24,8 @@ public class OAuth2TokenManager {
 
     public static final Duration DEFAULT_REFRESH_WINDOW = Duration.ofSeconds(30);
     public static final long DEFAULT_EXPIRES_IN_SECONDS = 300L;
+    public static final long MAX_EXPIRES_IN_SECONDS = 31_536_000L; // 365 days
+    private static final int MAX_ERROR_BODY_LENGTH = 500;
 
     private final HttpClient httpClient;
     private final String tokenEndpoint;
@@ -37,6 +39,7 @@ public class OAuth2TokenManager {
 
     private volatile String cachedAccessToken;
     private volatile Instant expirationTime;
+    private volatile long cachedExpiresIn;
 
     public OAuth2TokenManager(HttpClient httpClient, String tokenEndpoint, String clientId,
                               String clientSecret, String scope, Duration requestTimeout,
@@ -59,23 +62,54 @@ public class OAuth2TokenManager {
         this.refreshWindow = refreshWindow != null ? refreshWindow : DEFAULT_REFRESH_WINDOW;
     }
 
-    public synchronized String getAccessToken() throws OperatonException {
-        if (cachedAccessToken == null || isExpiring()) {
-            refreshToken();
+    /**
+     * Returns the cached access token or acquires a fresh token if expired or near expiration.
+     * Uses double-checked locking to avoid synchronization overhead on cache hits.
+     */
+    public String getAccessToken() throws OperatonException {
+        String token = this.cachedAccessToken;
+        if (token != null && !isExpiring()) {
+            return token;
         }
-        return cachedAccessToken;
+        synchronized (this) {
+            if (this.cachedAccessToken == null || isExpiring()) {
+                refreshToken();
+            }
+            return this.cachedAccessToken;
+        }
     }
 
+    /**
+     * Unconditionally invalidates the cached token.
+     */
     public synchronized void invalidate() {
         this.cachedAccessToken = null;
         this.expirationTime = null;
+        this.cachedExpiresIn = 0;
     }
 
+    /**
+     * Conditionally invalidates the cached token only if it matches the token that failed.
+     * Prevents concurrent requests from invalidating a freshly refreshed token.
+     */
+    public synchronized void invalidate(String failedToken) {
+        if (failedToken == null || failedToken.equals(this.cachedAccessToken)) {
+            invalidate();
+        }
+    }
+
+    /**
+     * Checks if the cached token is expired or within the refresh window.
+     * When expiresIn is shorter than refreshWindow, the effective refresh window
+     * adapts to at most 50% of expiresIn so short-lived tokens remain cached.
+     */
     public boolean isExpiring() {
-        if (expirationTime == null) {
+        Instant exp = expirationTime;
+        if (exp == null) {
             return true;
         }
-        return clock.get().isAfter(expirationTime.minus(refreshWindow));
+        long safeWindowSeconds = Math.min(refreshWindow.toSeconds(), Math.max(0, cachedExpiresIn / 2));
+        return clock.get().isAfter(exp.minusSeconds(safeWindowSeconds));
     }
 
     public Instant getExpirationTime() {
@@ -111,8 +145,11 @@ public class OAuth2TokenManager {
         int status = response.statusCode();
         String responseBody = response.body();
         if (status < 200 || status >= 300) {
-            throw new OperatonException("OAuth2 token request failed with HTTP " + status + ": "
-                    + (responseBody != null && !responseBody.isBlank() ? responseBody : "(empty response)"), status);
+            String errorMsg = responseBody != null && !responseBody.isBlank()
+                    ? (responseBody.length() <= MAX_ERROR_BODY_LENGTH
+                            ? responseBody : responseBody.substring(0, MAX_ERROR_BODY_LENGTH) + "...")
+                    : "(empty response)";
+            throw new OperatonException("OAuth2 token request failed with HTTP " + status + ": " + errorMsg, status);
         }
 
         try {
@@ -121,6 +158,14 @@ public class OAuth2TokenManager {
             if (tokenNode == null || tokenNode.asText().isBlank()) {
                 throw new OperatonException("OAuth2 token response missing access_token", status);
             }
+
+            JsonNode typeNode = json.get("token_type");
+            if (typeNode != null && !typeNode.isNull() && !typeNode.asText().isBlank()) {
+                if (!"bearer".equalsIgnoreCase(typeNode.asText().trim())) {
+                    throw new OperatonException("Unsupported OAuth2 token_type: " + typeNode.asText(), status);
+                }
+            }
+
             this.cachedAccessToken = tokenNode.asText().trim();
             long expiresIn = json.hasNonNull("expires_in")
                     ? json.get("expires_in").asLong(DEFAULT_EXPIRES_IN_SECONDS)
@@ -128,6 +173,8 @@ public class OAuth2TokenManager {
             if (expiresIn <= 0) {
                 expiresIn = DEFAULT_EXPIRES_IN_SECONDS;
             }
+            expiresIn = Math.min(expiresIn, MAX_EXPIRES_IN_SECONDS);
+            this.cachedExpiresIn = expiresIn;
             this.expirationTime = clock.get().plusSeconds(expiresIn);
         } catch (JsonProcessingException e) {
             throw new OperatonException("Failed to parse OAuth2 token response: " + e.getMessage(), status, e);
