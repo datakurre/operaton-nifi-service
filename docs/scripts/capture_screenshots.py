@@ -64,20 +64,31 @@ def capture_nifi(page, nifi_url: str, output_dir: str):
     page.screenshot(path=canvas_shot, full_page=False)
     print(f"  Captured: {canvas_shot}")
 
-    # Try opening controller services list if global menu is accessible
+    # Try opening controller services list from the Operate palette or global settings
     try:
-        # Click on settings / controller services if button exists
-        settings_button = page.locator('#global-menu-button, button[title*="Settings"], i.fa-gear, i.fa-cog').first
-        if settings_button.is_visible():
-            settings_button.click()
-            page.wait_for_timeout(1000)
-            controller_services_tab = page.locator('text="Controller Services", text="CONTROLLER SERVICES"').first
-            if controller_services_tab.is_visible():
-                controller_services_tab.click()
+        # Click on canvas background to ensure root process group is selected
+        page.mouse.click(200, 200)
+        page.wait_for_timeout(500)
+        # Open Controller Settings from global hamburger menu
+        hamburger = page.locator('button:has(.fa-bars), #global-menu-button, i.fa-bars, span.fa-bars').first
+        if hamburger.is_visible():
+            hamburger.click()
+            page.wait_for_timeout(500)
+            settings_item = page.locator('div.context-menu-item:has-text("Controller Settings"), text="Controller Settings"').first
+            if settings_item.is_visible():
+                settings_item.click()
                 page.wait_for_timeout(1500)
+                cs_tab = page.get_by_role("tab", name="CONTROLLER SERVICES").or_(page.get_by_text("CONTROLLER SERVICES"))
+                if cs_tab.count() > 0 and cs_tab.first.is_visible():
+                    cs_tab.first.click()
+                    page.wait_for_timeout(1500)
                 services_shot = os.path.join(output_dir, "02-nifi-controller-services.png")
                 page.screenshot(path=services_shot)
                 print(f"  Captured: {services_shot}")
+                close_btn = page.get_by_role("button", name="Close").or_(page.locator("button:has-text('Close')")).first
+                if close_btn.count() > 0 and close_btn.is_visible():
+                    close_btn.click()
+                    page.wait_for_timeout(500)
     except Exception as e:
         print(f"Notice capturing NiFi controller services dialog: {e}")
 

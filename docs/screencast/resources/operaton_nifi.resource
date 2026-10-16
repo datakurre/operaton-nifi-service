@@ -16,8 +16,8 @@ Log In To Operaton
     Wait Until Visible    input[ng-model="username"]
     Human Type    input[ng-model="username"]    ${username}
     Human Type    input[ng-model="password"]    ${password}
-    Human Click    role=button[name="Sign in"]
-    Wait For Navigation Away
+    Human Click    role=button[name="Log in"]
+    Wait For Navigation Away    ${OPERATON_URL}/app/cockpit/default/#/login
 
 Navigate To Process In Cockpit
     [Arguments]    ${process_key}
