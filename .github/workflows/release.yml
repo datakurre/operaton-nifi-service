@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Setup Cachix (vasara-bpm)
+        uses: cachix/cachix-action@v17
+        with:
+          name: vasara-bpm
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Install devenv
+        run: nix profile install --accept-flake-config nixpkgs#devenv
+
+      - name: Build NAR packages
+        run: devenv shell -- build
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nifi-controller/nifi-controller-api-nar/target/*.nar
+            nifi-controller/nifi-controller-nar/target/*.nar
+            nifi-processor/nifi-processor-nar/target/*.nar
+          generate_release_notes: true
