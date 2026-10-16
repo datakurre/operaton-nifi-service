@@ -110,7 +110,7 @@ Evaluate Fraud Risk (RouteOnAttribute)
 ```
 
 - **`Extract Fraud Check Attributes`**: Extracts `$.orderId` and `$.amount` from the task payload into attributes for downstream routing.
-- **`ExtendExternalTaskLock`**: For intensive checks (such as external risk APIs or ML inference), extends the lock duration to 10 minutes so the lock does not expire while processing.
+- **`ExtendExternalTaskLock`**: For intensive checks (such as external risk APIs or ML inference), explicitly extends the lock duration to 10 minutes so the lock does not expire while processing. *(Note: When **Automatic Lock Extension** is enabled on the Controller Service, active task leases are renewed automatically in the background, making this processor optional.)*
 - **`RouteOnAttribute`**: Evaluates whether the transaction exceeds risk limits (`${order.amount:toNumber():gt(10000)}`).
 - **`HandleFraudBpmnError`**: High-risk orders are escalated to the BPMN error boundary event with code `FRAUD_DETECTED`, setting variables `fraudReason` and `flaggedBy`. Operaton immediately routes the token to the **Manual Order Review** user task.
 
@@ -153,6 +153,8 @@ Credentials are never hardcoded. They are dynamically sourced from HashiCorp Vau
    - Worker ID: `#{worker_id}`
    - Username: `#{username}`
    - Password: `#{password}`
+   - Automatic Lock Extension: `false` (opt-in background renewal of active task leases; see [README](index.md#automatic-lock-extension))
+   - Max Lock Lifetime: `1 hour` (maximum lease duration bound for dropped/abandoned tasks)
 
 ---
 
@@ -212,3 +214,15 @@ To regenerate all publication-grade screenshots via headless Playwright:
 ```sh
 devenv shell -- playwright-python docs/scripts/capture_screenshots.py
 ```
+
+### Recording the Screencast Walkthrough
+
+To record, compose, and verify the multi-actor screencast walkthrough demonstrating end-to-end order fulfillment and dynamic Picture-in-Picture transitions:
+
+```sh
+devenv shell -- screencast run docs/screencast/external_task_walkthrough.robot --take docs/screencast/take-1
+devenv shell -- screencast compose docs/screencast/take-1
+devenv shell -- screencast verify docs/screencast/take-1
+```
+
+The composed video with synchronized WebVTT subtitles is generated at `docs/screencast/take-1/output.webm`.

@@ -49,7 +49,7 @@ Process Order In Apache NiFi
     Wait Until Visible    \#canvas
     Show Step    Apache NiFi canvas: 3-column pipeline with Operaton External Task processors    APACHE NIFI
     Pan NiFi Canvas    -400    0
-    Show Step    ExtendExternalTaskLock explicitly renews task leases before long-running operations    APACHE NIFI
+    Show Step    ExtendExternalTaskLock renews leases (not needed with Automatic Lock Extension)    APACHE NIFI
     Highlight NiFi Processor    ExtendExternalTaskLock
     Pan NiFi Canvas    400    0
     # Fetch and lock task ORD-1001
@@ -101,6 +101,6 @@ Review Completed Order Audit Trail
     Trace Process Route In Cockpit    Task_External    EndEvent_1
     Inspect Variable In Cockpit    Order Fulfilled
     Inspect Variable In Cockpit    Validate & Enrich Order
-    Show Step    Seamless distributed orchestration: Operaton BPM engine + Apache NiFi    OPERATON
-    Subtle Cursor Glide    2.0
+    Show Step    Seamless distributed orchestration: Operaton BPM engine + Apache NiFi    OPERATON    duration=2.5
+    Subtle Cursor Glide    3.0
     End Observer

@@ -109,7 +109,7 @@ Highlight NiFi Processor
     Highlight Canvas Processor    ${processor_name}
 
 Show Step
-    [Arguments]    ${text}    ${tag}=OPERATON
+    [Arguments]    ${text}    ${tag}=OPERATON    ${duration}=4.0
     [Documentation]    Displays a floating narrative banner across contexts and emits WebVTT caption.
     Show Narrative Banner    ${text}    ${tag}
-    Caption    ${text}
+    Caption    ${text}    ${duration}
