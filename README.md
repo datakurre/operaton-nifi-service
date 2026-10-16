@@ -12,8 +12,13 @@ wrapping the Operaton External Task REST API (`/external-task/...`).
 | --- | --- | --- |
 | Operaton REST URL | `http://localhost:8080/engine-rest` | Base URL of the Operaton REST API (`ENVIRONMENT` expression language scope, parameter context compatible) |
 | Worker ID | `nifi-${hostname()}` | Unique worker identifier per NiFi node |
+| OAuth2 Access Token Provider | optional | Optional controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 token retrieval |
+| OAuth2 Token Endpoint | optional | OAuth2 token endpoint URL for dynamic service account authentication via `client_credentials` grant (auto-fetches, caches, and refreshes tokens) |
+| OAuth2 Client ID | optional | OAuth2 service account Client ID |
+| OAuth2 Client Secret | optional | OAuth2 service account Client Secret (sensitive; for Vault / Parameter Contexts) |
+| OAuth2 Scope | optional | Optional OAuth2 scope(s) for the `client_credentials` request |
+| Bearer Token | optional | Fixed OAuth2 / JWT Bearer token (sensitive; used when dynamic OAuth2 service account is not configured) |
 | Username / Password | optional | HTTP Basic authentication credentials (`Password` is marked sensitive for Vault / Parameter Contexts) |
-| Bearer Token | optional | OAuth2 / JWT Bearer token authentication (sensitive; takes precedence over Basic auth when configured) |
 | Request Timeout | `30 sec` | HTTP request timeout (long polling timeout is added on top) |
 
 `nifi-processor/` — processors using that service:
@@ -106,9 +111,11 @@ Variables in FlowFile content are either:
 3. **`HashiCorpVaultParameterProvider`**: Reads secrets from KV-v2 mount `secret` and synchronizes them into Parameter Context `operaton` (`password` as a sensitive parameter; `url`, `worker_id`, and `username` as non-sensitive parameters).
 4. **`StandardOperatonExternalTaskService`**: References `#{url}`, `#{worker_id}`, `#{username}`, and `#{password}` from the bound `operaton` Parameter Context.
 
-## Demo Process & Local Development
+## Order Fulfillment Demo & Local Development
 
-The repository includes a sample BPMN process in `deployment/demo-process.bpmn` (`demo-process` with an external service task on topic `demo`).
+The repository includes a comprehensive, multi-stage Order Fulfillment demo process in `deployment/demo-process.bpmn` (`demo-process` v2.0), featuring automated validation, high-value decision gateways, fraud detection boundary events, human-in-the-loop manual review, and payment/shipment fulfillment.
+
+For a full narrative walkthrough with architecture diagrams and live screenshots, see the **[Order Fulfillment Guide](docs/order-fulfillment.md)**.
 
 Start the entire local development stack (Operaton, NiFi, Vault, and auto-preconfiguration):
 
@@ -120,7 +127,7 @@ Services started:
 - **Operaton BPM**: http://127.0.0.1:8080 (REST API at `/engine-rest` with Basic Auth enabled, Webapps at `/operaton/`, credentials: `admin` / `admin`, auto-deploys `deployment/demo-process.bpmn`)
 - **Apache NiFi**: http://127.0.0.1:8081/nifi/ (Plain HTTP, no authentication)
 - **HashiCorp Vault**: http://127.0.0.1:8200 (Web UI enabled, unsealed automatically, token stored in `.devenv/state/env_file`)
-- **Preconfiguration**: Automatically provisions Vault KV secrets (`secret/operaton`), synchronizes `HashiCorpVaultParameterProvider` into Parameter Context `operaton`, configures and enables `StandardOperatonExternalTaskService` using Vault parameters (`#{url}`, `#{worker_id}`, `#{username}`, `#{password}`), sets up the `FetchAndLockExternalTasks` → `CompleteExternalTask` → `HandleExternalTaskFailure` flow on the NiFi canvas, and starts a `demo-process` instance waiting on topic `demo`.
+- **Preconfiguration**: Automatically provisions Vault KV secrets (`secret/operaton`), synchronizes `HashiCorpVaultParameterProvider` into Parameter Context `operaton`, configures and enables `StandardOperatonExternalTaskService` using Vault parameters (`#{url}`, `#{worker_id}`, `#{username}`, `#{password}`), provisions a 3-column processing pipeline on the NiFi canvas exercising all processor types, and seeds 5 realistic order instances (`ORD-1000` to `ORD-1004`) across all lifecycle states (active validation, fraud check, human task review, and incident handling).
 
 Additional commands:
 ```sh
@@ -128,6 +135,8 @@ devenv shell -- build          # mvn package for all modules, NARs under */*-nar
 devenv test                    # run unit tests across all controller and processor modules
 devenv shell -- nifi-deploy    # manually copy newly rebuilt NARs into NiFi's autoload directory
 devenv shell -- preconfigure   # rerun preconfiguration on demand
+devenv shell -- python3 docs/scripts/setup_demo_instance.py --reset # reset and reseed demo instances
+devenv shell -- playwright-python docs/scripts/capture_screenshots.py # regenerate documentation screenshots
 devenv shell -- vault status   # interact with local Vault using vault CLI
 ```
 

@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,14 +27,21 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
 import org.apache.nifi.annotation.lifecycle.OnEnabled;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.PropertyValue;
+import org.apache.nifi.components.ValidationContext;
+import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.expression.ExpressionLanguageScope;
+import org.apache.nifi.oauth2.AccessToken;
+import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
 import org.apache.nifi.processor.util.StandardValidators;
 
-@Tags({"operaton", "bpmn", "external task", "workflow", "rest"})
+@Tags({"operaton", "bpmn", "external task", "workflow", "rest", "oauth2"})
 @CapabilityDescription("Operaton External Task client using the Operaton REST API "
-        + "(fetch and lock, complete, failure, BPMN error, extend lock, unlock).")
+        + "(fetch and lock, complete, failure, BPMN error, extend lock, unlock). "
+        + "Supports dynamic OAuth2 service account (client_credentials), OAuth2 Access Token Provider, "
+        + "static Bearer token, and HTTP Basic authentication.")
 public class StandardOperatonExternalTaskService extends AbstractControllerService
         implements OperatonExternalTaskService {
 
@@ -56,6 +64,60 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
             .build();
 
+    public static final PropertyDescriptor OAUTH2_ACCESS_TOKEN_PROVIDER = new PropertyDescriptor.Builder()
+            .name("OAuth2 Access Token Provider")
+            .description("Optional controller service providing OAuth2 access tokens. If set, takes precedence "
+                    + "over direct service account properties.")
+            .identifiesControllerService(OAuth2AccessTokenProvider.class)
+            .required(false)
+            .build();
+
+    public static final PropertyDescriptor OAUTH2_TOKEN_ENDPOINT = new PropertyDescriptor.Builder()
+            .name("OAuth2 Token Endpoint")
+            .description("OAuth2 Token Endpoint URL for service account authentication via client_credentials grant, "
+                    + "e.g. https://auth.example.com/oauth/token. When configured along with Client ID and Secret, "
+                    + "tokens are automatically fetched, cached, and refreshed before expiration.")
+            .required(false)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
+            .addValidator(StandardValidators.URL_VALIDATOR)
+            .build();
+
+    public static final PropertyDescriptor OAUTH2_CLIENT_ID = new PropertyDescriptor.Builder()
+            .name("OAuth2 Client ID")
+            .description("OAuth2 Client ID for service account authentication")
+            .required(false)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
+            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .dependsOn(OAUTH2_TOKEN_ENDPOINT)
+            .build();
+
+    public static final PropertyDescriptor OAUTH2_CLIENT_SECRET = new PropertyDescriptor.Builder()
+            .name("OAuth2 Client Secret")
+            .description("OAuth2 Client Secret for service account authentication")
+            .required(false)
+            .sensitive(true)
+            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
+            .dependsOn(OAUTH2_CLIENT_ID)
+            .build();
+
+    public static final PropertyDescriptor OAUTH2_SCOPE = new PropertyDescriptor.Builder()
+            .name("OAuth2 Scope")
+            .description("Optional scope(s) for OAuth2 client_credentials token requests")
+            .required(false)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
+            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .dependsOn(OAUTH2_TOKEN_ENDPOINT)
+            .build();
+
+    public static final PropertyDescriptor BEARER_TOKEN = new PropertyDescriptor.Builder()
+            .name("Bearer Token")
+            .description("Fixed Bearer token for HTTP OAuth2 / token authentication. Used when OAuth2 "
+                    + "service account / provider is not configured; takes precedence over Username/Password.")
+            .required(false)
+            .sensitive(true)
+            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .build();
+
     public static final PropertyDescriptor USERNAME = new PropertyDescriptor.Builder()
             .name("Username")
             .description("Username for HTTP basic authentication")
@@ -73,15 +135,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .dependsOn(USERNAME)
             .build();
 
-    public static final PropertyDescriptor BEARER_TOKEN = new PropertyDescriptor.Builder()
-            .name("Bearer Token")
-            .description("Bearer token for HTTP OAuth2 / token authentication. Takes precedence over "
-                    + "Username/Password when set.")
-            .required(false)
-            .sensitive(true)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .build();
-
     public static final PropertyDescriptor REQUEST_TIMEOUT = new PropertyDescriptor.Builder()
             .name("Request Timeout")
             .description("Timeout for REST requests. Long polling timeouts of fetch and lock "
@@ -94,20 +147,52 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     /** Maximum length of an error response body included in exception messages. */
     private static final int MAX_ERROR_LENGTH = 500;
 
-    private static final List<PropertyDescriptor> PROPERTIES =
-            List.of(REST_URL, WORKER_ID, USERNAME, PASSWORD, BEARER_TOKEN, REQUEST_TIMEOUT);
+    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+            REST_URL,
+            WORKER_ID,
+            OAUTH2_ACCESS_TOKEN_PROVIDER,
+            OAUTH2_TOKEN_ENDPOINT,
+            OAUTH2_CLIENT_ID,
+            OAUTH2_CLIENT_SECRET,
+            OAUTH2_SCOPE,
+            BEARER_TOKEN,
+            USERNAME,
+            PASSWORD,
+            REQUEST_TIMEOUT);
 
     private final ObjectMapper mapper = new ObjectMapper();
 
     private volatile HttpClient client;
     private volatile String baseUrl;
     private volatile String workerId;
-    private volatile String authorization;
     private volatile Duration requestTimeout;
+
+    private volatile OAuth2AccessTokenProvider oauth2Provider;
+    private volatile OAuth2TokenManager tokenManager;
+    private volatile String staticAuthorization;
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return PROPERTIES;
+    }
+
+    @Override
+    protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
+        final List<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
+        final boolean hasEndpoint = validationContext.getProperty(OAUTH2_TOKEN_ENDPOINT).isSet();
+        final boolean hasClientId = validationContext.getProperty(OAUTH2_CLIENT_ID).isSet();
+        final boolean hasClientSecret = validationContext.getProperty(OAUTH2_CLIENT_SECRET).isSet();
+
+        if (hasEndpoint || hasClientId || hasClientSecret) {
+            if (!hasEndpoint || !hasClientId || !hasClientSecret) {
+                results.add(new ValidationResult.Builder()
+                        .subject("OAuth2 Service Account")
+                        .valid(false)
+                        .explanation("OAuth2 Token Endpoint, OAuth2 Client ID, and OAuth2 Client Secret must all be configured together.")
+                        .build());
+            }
+        }
+        return results;
     }
 
     @OnEnabled
@@ -118,23 +203,45 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         requestTimeout = Duration.ofMillis(
                 context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
 
-        String bearerToken = context.getProperty(BEARER_TOKEN).getValue();
-        String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
-        if (bearerToken != null && !bearerToken.isBlank()) {
-            authorization = "Bearer " + bearerToken.trim();
-        } else if (username != null) {
-            String password = context.getProperty(PASSWORD).getValue();
-            String credentials = username + ":" + (password == null ? "" : password);
-            authorization = "Basic " + Base64.getEncoder()
-                    .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-        } else {
-            authorization = null;
-        }
-
         client = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(requestTimeout)
                 .build();
+
+        PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
+        if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
+            oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
+            tokenManager = null;
+            staticAuthorization = null;
+        } else {
+            oauth2Provider = null;
+            String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
+            String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
+            String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).getValue();
+            String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
+
+            if (tokenEndpoint != null && !tokenEndpoint.isBlank()
+                    && clientId != null && !clientId.isBlank()
+                    && clientSecret != null && !clientSecret.isBlank()) {
+                tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
+                        clientSecret, scope, requestTimeout, mapper);
+                staticAuthorization = null;
+            } else {
+                tokenManager = null;
+                String bearerToken = context.getProperty(BEARER_TOKEN).getValue();
+                String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
+                if (bearerToken != null && !bearerToken.isBlank()) {
+                    staticAuthorization = "Bearer " + bearerToken.trim();
+                } else if (username != null) {
+                    String password = context.getProperty(PASSWORD).getValue();
+                    String credentials = username + ":" + (password == null ? "" : password);
+                    staticAuthorization = "Basic " + Base64.getEncoder()
+                            .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+                } else {
+                    staticAuthorization = null;
+                }
+            }
+        }
     }
 
     @OnDisabled
@@ -145,6 +252,20 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             // close() would wait for in-flight (long polling) requests to finish
             httpClient.shutdownNow();
         }
+        if (tokenManager != null) {
+            tokenManager.invalidate();
+            tokenManager = null;
+        }
+        oauth2Provider = null;
+        staticAuthorization = null;
+    }
+
+    OAuth2TokenManager getTokenManager() {
+        return tokenManager;
+    }
+
+    void setTokenManager(OAuth2TokenManager tokenManager) {
+        this.tokenManager = tokenManager;
     }
 
     @Override
@@ -305,21 +426,43 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
     }
 
+    private String getAuthorizationHeader() throws OperatonException {
+        if (oauth2Provider != null) {
+            AccessToken details = oauth2Provider.getAccessDetails();
+            if (details == null || details.getAccessToken() == null || details.getAccessToken().isBlank()) {
+                throw new OperatonException("OAuth2 Access Token Provider returned an empty access token", 0);
+            }
+            return "Bearer " + details.getAccessToken().trim();
+        }
+        if (tokenManager != null) {
+            return "Bearer " + tokenManager.getAccessToken();
+        }
+        return staticAuthorization;
+    }
+
     /**
      * POST a JSON body and return the parsed response, or null for an empty response.
      */
     private JsonNode post(String path, JsonNode body, Duration timeout) throws OperatonException {
+        return post(path, body, timeout, true);
+    }
+
+    private JsonNode post(String path, JsonNode body, Duration timeout, boolean retryOnUnauthorized)
+            throws OperatonException {
         HttpClient httpClient = client;
         if (httpClient == null) {
             throw new OperatonException("Controller service is not enabled", 0);
         }
+
+        String authHeader = getAuthorizationHeader();
+
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8));
-        if (authorization != null) {
-            request.header("Authorization", authorization);
+        if (authHeader != null) {
+            request.header("Authorization", authHeader);
         }
 
         HttpResponse<String> response;
@@ -334,6 +477,16 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
 
         int status = response.statusCode();
+        if (status == 401 && retryOnUnauthorized) {
+            if (oauth2Provider != null) {
+                oauth2Provider.refreshAccessDetails();
+                return post(path, body, timeout, false);
+            } else if (tokenManager != null) {
+                tokenManager.invalidate();
+                return post(path, body, timeout, false);
+            }
+        }
+
         String responseBody = response.body();
         if (status < 200 || status >= 300) {
             throw new OperatonException("POST " + path + " returned " + status + ": "

@@ -53,3 +53,4 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Order Fulfillment Demo: order-fulfillment.md

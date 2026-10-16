@@ -2,8 +2,10 @@
 """
 Automated screenshot generator for Operaton NiFi External Task Worker.
 
-Captures screenshots of Apache NiFi, Operaton BPM (Cockpit/Tasklist),
-and HashiCorp Vault when the stack is running.
+Captures screenshots of Apache NiFi (3-column Order Fulfillment & Fraud Compliance
+flow, Controller Services, and Vault-backed Parameter Context), Operaton BPM
+(Cockpit Dashboard, Process Definition Diagram with live tokens/incidents, and
+Tasklist with escalated Manual Order Review task), and HashiCorp Vault UI.
 
 Usage:
     playwright-python docs/scripts/capture_screenshots.py
@@ -11,18 +13,22 @@ Usage:
 """
 
 import argparse
+import base64
+import json
 import os
-import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
 from playwright.sync_api import sync_playwright
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_NIFI_URL = os.environ.get("NIFI_ADDR", "http://127.0.0.1:8081/nifi")
+DEFAULT_NIFI_API = os.environ.get("NIFI_API", "http://127.0.0.1:8081/nifi-api")
 DEFAULT_OPERATON_URL = os.environ.get("OPERATON_ADDR", "http://127.0.0.1:8080/operaton")
+DEFAULT_OPERATON_REST = os.environ.get("OPERATON_REST_URL", "http://127.0.0.1:8080/engine-rest")
 DEFAULT_VAULT_URL = os.environ.get("VAULT_ADDR", "http://127.0.0.1:8200/ui")
-DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images")
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "images")
 VIEWPORT = {"width": 1920, "height": 1080}
 
 
@@ -32,65 +38,90 @@ def is_service_reachable(url: str, timeout: float = 3.0) -> bool:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status < 500
     except urllib.error.HTTPError as e:
-        # 401/403/302 mean the server is running and responding
         return e.code < 500
     except Exception:
         return False
 
 
-def wait_for_service(name: str, url: str, max_wait: int = 15) -> bool:
-    print(f"Checking if {name} is reachable at {url}...")
-    for _ in range(max_wait):
-        if is_service_reachable(url):
-            print(f"  ✓ {name} is ready.")
-            return True
-        time.sleep(1)
-    print(f"  ✗ {name} is not reachable at {url}.")
-    return False
+def api_get(url: str, basic_auth: str = None):
+    headers = {"Accept": "application/json"}
+    if basic_auth:
+        token = base64.b64encode(basic_auth.encode("ascii")).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def get_vault_token() -> str:
+    if os.environ.get("VAULT_TOKEN"):
+        return os.environ["VAULT_TOKEN"]
+    env_file = os.path.join(ROOT_DIR, ".devenv", "state", "env_file")
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                if line.startswith("export VAULT_TOKEN="):
+                    return line.strip().split("=", 1)[1]
+    return ""
 
 
 def capture_nifi(page, nifi_url: str, output_dir: str):
     print(f"Navigating to NiFi: {nifi_url}...")
     try:
         page.goto(nifi_url, wait_until="networkidle", timeout=30000)
-    except Exception as e:
-        print(f"Warning navigating to NiFi networkidle: {e}. Trying load state...")
+    except Exception:
         page.goto(nifi_url, wait_until="load", timeout=30000)
 
-    # Allow canvas to initialize and render SVG components
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(3500)
+
+    # Collapse Navigation and Operation drawers so the canvas has full width, then fit
+    try:
+        page.evaluate("""() => {
+            const nav = document.querySelector('#navigation-control button, .nav-resizer button, button:has(.fa-minus-square-o)');
+            const drawers = document.querySelectorAll('button[title="Hide navigation"], button[title="Hide operation"], .dock-panel-resizer');
+            drawers.forEach(d => d.click());
+            const navPanel = document.querySelector('#navigation-control, .navigation-control');
+            if (navPanel) navPanel.style.display = 'none';
+            const opPanel = document.querySelector('#operation-control, .operation-control');
+            if (opPanel) opPanel.style.display = 'none';
+        }""")
+        page.wait_for_timeout(500)
+        fit_btn = page.locator('button[title="Fit"], button:has(.fa-expand)').first
+        if fit_btn.is_visible():
+            fit_btn.click()
+            page.wait_for_timeout(1000)
+    except Exception as e:
+        print(f"Notice adjusting NiFi canvas viewport: {e}")
 
     canvas_shot = os.path.join(output_dir, "01-nifi-flow-canvas.png")
     page.screenshot(path=canvas_shot, full_page=False)
     print(f"  Captured: {canvas_shot}")
 
-    # Try opening controller services list from the Operate palette or global settings
+    # Navigate directly to Root Process Group Controller Services
     try:
-        # Click on canvas background to ensure root process group is selected
-        page.mouse.click(200, 200)
-        page.wait_for_timeout(500)
-        # Open Controller Settings from global hamburger menu
-        hamburger = page.locator('button:has(.fa-bars), #global-menu-button, i.fa-bars, span.fa-bars').first
-        if hamburger.is_visible():
-            hamburger.click()
-            page.wait_for_timeout(500)
-            settings_item = page.locator('div.context-menu-item:has-text("Controller Settings"), text="Controller Settings"').first
-            if settings_item.is_visible():
-                settings_item.click()
-                page.wait_for_timeout(1500)
-                cs_tab = page.get_by_role("tab", name="CONTROLLER SERVICES").or_(page.get_by_text("CONTROLLER SERVICES"))
-                if cs_tab.count() > 0 and cs_tab.first.is_visible():
-                    cs_tab.first.click()
-                    page.wait_for_timeout(1500)
-                services_shot = os.path.join(output_dir, "02-nifi-controller-services.png")
-                page.screenshot(path=services_shot)
-                print(f"  Captured: {services_shot}")
-                close_btn = page.get_by_role("button", name="Close").or_(page.locator("button:has-text('Close')")).first
-                if close_btn.count() > 0 and close_btn.is_visible():
-                    close_btn.click()
-                    page.wait_for_timeout(500)
+        root_info = api_get(f"{DEFAULT_NIFI_API}/flow/process-groups/root")
+        root_id = root_info["processGroupFlow"]["breadcrumb"]["breadcrumb"]["id"]
+        cs_url = f"{nifi_url}/#/process-groups/{root_id}/controller-services"
+        print(f"Navigating to NiFi Controller Services: {cs_url}...")
+        page.goto(cs_url, wait_until="load", timeout=20000)
+        page.wait_for_timeout(2500)
+        services_shot = os.path.join(output_dir, "02-nifi-controller-services.png")
+        page.screenshot(path=services_shot)
+        print(f"  Captured: {services_shot}")
     except Exception as e:
-        print(f"Notice capturing NiFi controller services dialog: {e}")
+        print(f"Notice capturing NiFi controller services view: {e}")
+
+    # Navigate to Parameter Contexts view showing Vault-synchronized 'operaton' context
+    try:
+        pc_url = f"{nifi_url}/#/parameter-contexts"
+        print(f"Navigating to NiFi Parameter Contexts: {pc_url}...")
+        page.goto(pc_url, wait_until="load", timeout=20000)
+        page.wait_for_timeout(2500)
+        pc_shot = os.path.join(output_dir, "03-nifi-parameter-context.png")
+        page.screenshot(path=pc_shot)
+        print(f"  Captured: {pc_shot}")
+    except Exception as e:
+        print(f"Notice capturing NiFi parameter contexts view: {e}")
 
 
 def capture_operaton(page, operaton_url: str, output_dir: str):
@@ -106,17 +137,18 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
     page.screenshot(path=login_shot)
     print(f"  Captured: {login_shot}")
 
-    # Fill login form if present
     try:
         user_input = page.locator('input[name="username"], input[ng-model="username"]').first
         pass_input = page.locator('input[name="password"], input[ng-model="password"]').first
-        submit_btn = page.locator('button[type="submit"], button:has-text("Sign in"), button:has-text("Login")').first
+        submit_btn = page.locator(
+            'button[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Login")'
+        ).first
 
         if user_input.is_visible() and pass_input.is_visible():
             user_input.fill("admin")
             pass_input.fill("admin")
             submit_btn.click()
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(3500)
 
             cockpit_shot = os.path.join(output_dir, "04-operaton-cockpit-dashboard.png")
             page.screenshot(path=cockpit_shot)
@@ -124,11 +156,35 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
     except Exception as e:
         print(f"Notice logging into Operaton Cockpit: {e}")
 
-    # Operaton Tasklist
+    # Navigate to the deployed 'demo-process' Process Definition runtime diagram view
+    try:
+        defs = api_get(f"{DEFAULT_OPERATON_REST}/process-definition?key=demo-process&latestVersion=true", "admin:admin")
+        if defs:
+            proc_def_id = defs[0]["id"]
+            diagram_url = f"{operaton_url}/app/cockpit/default/#/process-definition/{proc_def_id}/runtime"
+            print(f"Navigating to Operaton Process Definition diagram: {diagram_url}...")
+            page.goto(diagram_url, wait_until="load", timeout=20000)
+            page.wait_for_timeout(3500)
+            diagram_shot = os.path.join(output_dir, "05-operaton-process-diagram.png")
+            page.screenshot(path=diagram_shot)
+            print(f"  Captured: {diagram_shot}")
+    except Exception as e:
+        print(f"Notice capturing Operaton process diagram: {e}")
+
+    # Operaton Tasklist with 'Manual Order Review' task selected and variables loaded
     try:
         tasklist_url = f"{operaton_url}/app/tasklist/default/"
-        page.goto(tasklist_url, wait_until="load", timeout=15000)
-        page.wait_for_timeout(3000)
+        print(f"Navigating to Operaton Tasklist: {tasklist_url}...")
+        page.goto(tasklist_url, wait_until="load", timeout=20000)
+        page.wait_for_timeout(3500)
+        task_item = page.get_by_text("Manual Order Review").first
+        if task_item.is_visible():
+            task_item.click()
+            page.wait_for_timeout(1500)
+            load_vars = page.get_by_text("Load Variables").first
+            if load_vars.is_visible():
+                load_vars.click()
+                page.wait_for_timeout(1500)
         tasklist_shot = os.path.join(output_dir, "05-operaton-tasklist.png")
         page.screenshot(path=tasklist_shot)
         print(f"  Captured: {tasklist_shot}")
@@ -137,10 +193,30 @@ def capture_operaton(page, operaton_url: str, output_dir: str):
 
 
 def capture_vault(page, vault_url: str, output_dir: str):
-    print(f"Navigating to Vault: {vault_url}...")
+    base_ui_url = vault_url.rstrip("/")
+    if not base_ui_url.endswith("/ui"):
+        base_ui_url += "/ui"
+    print(f"Navigating to Vault: {base_ui_url}...")
     try:
-        page.goto(vault_url, wait_until="load", timeout=15000)
+        page.goto(f"{base_ui_url}/vault/auth", wait_until="networkidle", timeout=15000)
         page.wait_for_timeout(2000)
+        vault_token = get_vault_token()
+        if vault_token:
+            token_input = page.locator('input[name="token"]').or_(page.locator('input[type="password"]')).first
+            if token_input.is_visible():
+                token_input.fill(vault_token)
+                sign_in_btn = page.locator('button[type="submit"]').first
+                if sign_in_btn.is_visible():
+                    sign_in_btn.click()
+                    page.wait_for_timeout(2500)
+                    secret_link = page.locator('a:has-text("secret/")').first
+                    if secret_link.is_visible():
+                        secret_link.click()
+                        page.wait_for_timeout(2000)
+                        operaton_entry = page.get_by_text("operaton").first
+                        if operaton_entry.is_visible():
+                            operaton_entry.click()
+                            page.wait_for_timeout(2000)
         vault_shot = os.path.join(output_dir, "06-vault-ui.png")
         page.screenshot(path=vault_shot)
         print(f"  Captured: {vault_shot}")
@@ -163,23 +239,10 @@ def main():
     operaton_available = is_service_reachable(args.operaton_url)
     vault_available = is_service_reachable(args.vault_url)
 
-    if not (nifi_available or operaton_available or vault_available):
-        print("=" * 70)
-        print("Note: Services are not currently responding.")
-        print("To start the full local development stack, run:")
-        print("    devenv up")
-        print()
-        print("Services expected:")
-        print(f"  - NiFi:     {args.nifi_url}")
-        print(f"  - Operaton: {args.operaton_url}")
-        print(f"  - Vault:    {args.vault_url}")
-        print("=" * 70)
-        print("Proceeding anyway with reachable services or headless diagnosis...")
-
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"]
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
 
         context_kwargs = {"viewport": VIEWPORT}
@@ -216,7 +279,7 @@ def main():
 
     print("\nScreenshot process completed!")
     if os.path.exists(args.output_dir):
-        files = os.listdir(args.output_dir)
+        files = sorted(os.listdir(args.output_dir))
         print(f"Screenshots in {args.output_dir}: {files if files else '(none captured)'}")
 
 

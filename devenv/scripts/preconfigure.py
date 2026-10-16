@@ -72,7 +72,6 @@ def configure_vault(vault_addr, state_dir, operaton_url="http://localhost:8080/e
 
     headers = {"X-Vault-Token": vault_token}
     print("Configuring Vault secrets...")
-    # Enable KV-v2 secrets engine at secret/ if not already mounted
     try:
         mounts = request(f"{vault_addr}/v1/sys/mounts", headers=headers)
         if mounts and "secret/" not in mounts:
@@ -86,7 +85,6 @@ def configure_vault(vault_addr, state_dir, operaton_url="http://localhost:8080/e
     except Exception as e:
         print(f"Notice enabling secret/ mount: {e}")
 
-    # Put initial Operaton secrets
     try:
         request(
             f"{vault_addr}/v1/secret/data/operaton",
@@ -123,23 +121,62 @@ def wait_for_operaton(operaton_url):
         time.sleep(2)
 
 
+def _fetch_and_lock_by_business_key(operaton_url, headers, topic, business_key, worker_id="demo-seeder"):
+    tasks = request(
+        f"{operaton_url}/external-task/fetchAndLock",
+        data={
+            "workerId": worker_id,
+            "maxTasks": 1,
+            "topics": [
+                {
+                    "topicName": topic,
+                    "lockDuration": 60000,
+                    "businessKey": business_key,
+                }
+            ],
+        },
+        headers=headers,
+        method="POST",
+    )
+    if tasks:
+        return tasks[0]["id"]
+    return None
+
+
 def configure_operaton(operaton_url, devenv_root):
-    print("Configuring Operaton demo deployment and process instance...")
+    print("Configuring Operaton demo deployment and multi-stage process instances...")
     auth = base64.b64encode(b"admin:admin").decode("ascii")
     headers = {"Authorization": f"Basic {auth}"}
 
     bpmn_path = os.path.join(devenv_root, "deployment", "demo-process.bpmn")
     if os.path.exists(bpmn_path):
         try:
-            defs = request(f"{operaton_url}/process-definition?key=demo-process", headers=headers)
+            defs = request(
+                f"{operaton_url}/process-definition?key=demo-process&versionTag=2.0",
+                headers=headers,
+            )
             if not defs:
+                old_instances = request(
+                    f"{operaton_url}/process-instance?processDefinitionKey=demo-process",
+                    headers=headers,
+                ) or []
+                for inst in old_instances:
+                    try:
+                        request(
+                            f"{operaton_url}/process-instance/{inst['id']}?skipCustomListeners=true",
+                            headers=headers,
+                            method="DELETE",
+                        )
+                    except Exception:
+                        pass
+
                 boundary = f"----OperatonFormBoundary{uuid.uuid4().hex}"
                 with open(bpmn_path, "rb") as f:
                     bpmn_bytes = f.read()
                 body = (
                     f"--{boundary}\r\n"
                     f'Content-Disposition: form-data; name="deployment-name"\r\n\r\n'
-                    f"demo-deployment\r\n"
+                    f"order-fulfillment-demo\r\n"
                     f"--{boundary}\r\n"
                     f'Content-Disposition: form-data; name="deploy-changed-only"\r\n\r\n'
                     f"true\r\n"
@@ -152,32 +189,198 @@ def configure_operaton(operaton_url, devenv_root):
                     "Content-Type": f"multipart/form-data; boundary={boundary}",
                 }
                 request(f"{operaton_url}/deployment/create", data=body, headers=deploy_headers, method="POST")
-                print("Deployed demo-process.bpmn to Operaton.")
+                print("Deployed demo-process.bpmn (versionTag 2.0) to Operaton.")
             else:
-                print("Process definition 'demo-process' is already deployed.")
+                print("Process definition 'demo-process' (versionTag 2.0) is already deployed.")
         except Exception as e:
             print(f"Notice deploying demo-process.bpmn: {e}")
 
+    # Seed realistic order instances across stages if not already present
     try:
-        tasks = request(f"{operaton_url}/external-task?topicName=demo", headers=headers)
-        if not tasks:
-            res = request(
+        active_instances = request(
+            f"{operaton_url}/process-instance?processDefinitionKey=demo-process",
+            headers=headers,
+        ) or []
+        existing_keys = {inst.get("businessKey") for inst in active_instances}
+
+        # 1. Completed order (ORD-1000) for History view
+        hist_completed = request(
+            f"{operaton_url}/history/process-instance?processDefinitionKey=demo-process&processInstanceBusinessKey=ORD-1000",
+            headers=headers,
+        ) or []
+        if not hist_completed:
+            request(
                 f"{operaton_url}/process-definition/key/demo-process/start",
                 data={
-                    "businessKey": "DEMO-001",
+                    "businessKey": "ORD-1000",
                     "variables": {
-                        "orderId": {"value": "ORD-98765", "type": "String"},
-                        "amount": {"value": 149.99, "type": "Double"},
+                        "orderId": {"value": "ORD-1000", "type": "String"},
+                        "customer": {"value": "Edsger Dijkstra", "type": "String"},
+                        "amount": {"value": 89.00, "type": "Double"},
+                        "currency": {"value": "EUR", "type": "String"},
                     },
                 },
                 headers=headers,
                 method="POST",
             )
-            print(f"Started demo-process instance: {res.get('id')}")
-        else:
-            print(f"External task on topic 'demo' already waiting ({len(tasks)} active).")
+            for topic, extra_vars in [
+                ("demo", {"validated": {"value": True, "type": "Boolean"}}),
+                ("order-payment", {"paymentId": {"value": "PAY-88201", "type": "String"}}),
+                ("order-shipment", {"trackingNumber": {"value": "TRK-992014", "type": "String"}}),
+            ]:
+                tid = _fetch_and_lock_by_business_key(operaton_url, headers, topic, "ORD-1000")
+                if tid:
+                    request(
+                        f"{operaton_url}/external-task/{tid}/complete",
+                        data={"workerId": "demo-seeder", "variables": extra_vars},
+                        headers=headers,
+                        method="POST",
+                    )
+            print("Seeded completed order instance ORD-1000.")
+
+        # 2. Order waiting at Stage 1: Validate & Enrich Order (topic 'demo')
+        if "ORD-1001" not in existing_keys:
+            request(
+                f"{operaton_url}/process-definition/key/demo-process/start",
+                data={
+                    "businessKey": "ORD-1001",
+                    "variables": {
+                        "orderId": {"value": "ORD-1001", "type": "String"},
+                        "customer": {"value": "Ada Lovelace", "type": "String"},
+                        "amount": {"value": 149.99, "type": "Double"},
+                        "currency": {"value": "EUR", "type": "String"},
+                    },
+                },
+                headers=headers,
+                method="POST",
+            )
+            print("Seeded active order ORD-1001 at 'Validate & Enrich Order' (topic: demo).")
+
+        # 3. High-value order waiting at Stage 2: Fraud & Compliance Check (topic 'order-fraud-check')
+        if "ORD-1002" not in existing_keys:
+            request(
+                f"{operaton_url}/process-definition/key/demo-process/start",
+                data={
+                    "businessKey": "ORD-1002",
+                    "variables": {
+                        "orderId": {"value": "ORD-1002", "type": "String"},
+                        "customer": {"value": "Grace Hopper", "type": "String"},
+                        "amount": {"value": 2450.00, "type": "Double"},
+                        "currency": {"value": "EUR", "type": "String"},
+                    },
+                },
+                headers=headers,
+                method="POST",
+            )
+            tid = _fetch_and_lock_by_business_key(operaton_url, headers, "demo", "ORD-1002")
+            if tid:
+                request(
+                    f"{operaton_url}/external-task/{tid}/complete",
+                    data={
+                        "workerId": "demo-seeder",
+                        "variables": {
+                            "validated": {"value": True, "type": "Boolean"},
+                            "riskTier": {"value": "HIGH_VALUE", "type": "String"},
+                        },
+                    },
+                    headers=headers,
+                    method="POST",
+                )
+            print("Seeded high-value order ORD-1002 at 'Fraud & Compliance Check' (topic: order-fraud-check).")
+
+        # 4. Flagged order escalated via BPMN Error to Human User Task 'Manual Order Review'
+        if "ORD-1003" not in existing_keys:
+            request(
+                f"{operaton_url}/process-definition/key/demo-process/start",
+                data={
+                    "businessKey": "ORD-1003",
+                    "variables": {
+                        "orderId": {"value": "ORD-1003", "type": "String"},
+                        "customer": {"value": "Alan Turing", "type": "String"},
+                        "amount": {"value": 18500.00, "type": "Double"},
+                        "currency": {"value": "EUR", "type": "String"},
+                    },
+                },
+                headers=headers,
+                method="POST",
+            )
+            tid_demo = _fetch_and_lock_by_business_key(operaton_url, headers, "demo", "ORD-1003")
+            if tid_demo:
+                request(
+                    f"{operaton_url}/external-task/{tid_demo}/complete",
+                    data={
+                        "workerId": "demo-seeder",
+                        "variables": {"validated": {"value": True, "type": "Boolean"}},
+                    },
+                    headers=headers,
+                    method="POST",
+                )
+            tid_fraud = _fetch_and_lock_by_business_key(operaton_url, headers, "order-fraud-check", "ORD-1003")
+            if tid_fraud:
+                request(
+                    f"{operaton_url}/external-task/{tid_fraud}/bpmnError",
+                    data={
+                        "workerId": "demo-seeder",
+                        "errorCode": "FRAUD_DETECTED",
+                        "errorMessage": "Order ORD-1003 (18,500.00 EUR) exceeds automated compliance limit of 10,000.00 EUR",
+                        "variables": {
+                            "fraudReason": {
+                                "value": "Exceeds 10,000 EUR automated threshold; requires manual compliance sign-off",
+                                "type": "String",
+                            },
+                            "flaggedBy": {"value": "nifi-worker", "type": "String"},
+                        },
+                    },
+                    headers=headers,
+                    method="POST",
+                )
+            print("Seeded flagged order ORD-1003 escalated via BPMN Error to 'Manual Order Review' User Task.")
+
+        # 5. Order with technical failure & Open Incident at 'Charge Payment & Invoice' (topic 'order-payment')
+        if "ORD-1004" not in existing_keys:
+            request(
+                f"{operaton_url}/process-definition/key/demo-process/start",
+                data={
+                    "businessKey": "ORD-1004",
+                    "variables": {
+                        "orderId": {"value": "ORD-1004", "type": "String"},
+                        "customer": {"value": "Margaret Hamilton", "type": "String"},
+                        "amount": {"value": 680.00, "type": "Double"},
+                        "currency": {"value": "EUR", "type": "String"},
+                    },
+                },
+                headers=headers,
+                method="POST",
+            )
+            for topic in ["demo", "order-fraud-check"]:
+                tid = _fetch_and_lock_by_business_key(operaton_url, headers, topic, "ORD-1004")
+                if tid:
+                    request(
+                        f"{operaton_url}/external-task/{tid}/complete",
+                        data={
+                            "workerId": "demo-seeder",
+                            "variables": {"validated": {"value": True, "type": "Boolean"}},
+                        },
+                        headers=headers,
+                        method="POST",
+                    )
+            tid_pay = _fetch_and_lock_by_business_key(operaton_url, headers, "order-payment", "ORD-1004")
+            if tid_pay:
+                request(
+                    f"{operaton_url}/external-task/{tid_pay}/failure",
+                    data={
+                        "workerId": "demo-seeder",
+                        "errorMessage": "Upstream payment gateway HTTP 504 Gateway Timeout (retries exhausted)",
+                        "errorDetails": "java.net.http.HttpTimeoutException: request timed out calling https://payments.internal/v1/charge for order ORD-1004",
+                        "retries": 0,
+                        "retryTimeout": 0,
+                    },
+                    headers=headers,
+                    method="POST",
+                )
+            print("Seeded order ORD-1004 with technical failure incident at 'Charge Payment & Invoice'.")
     except Exception as e:
-        print(f"Notice starting demo-process instance: {e}")
+        print(f"Notice seeding demo-process instances: {e}")
 
 
 def wait_for_nifi(nifi_addr):
@@ -317,7 +520,6 @@ def configure_vault_parameter_context(nifi_addr, vault_addr, vault_token, root_i
         }
 
     if not {"url", "worker_id", "username", "password"}.issubset(existing_param_names):
-        # Fetch parameters from Vault and apply to Parameter Context 'operaton'
         provider = request(f"{nifi_addr}/nifi-api/parameter-providers/{provider_id}")
         provider = request(
             f"{nifi_addr}/nifi-api/parameter-providers/{provider_id}/parameters/fetch-requests",
@@ -385,6 +587,326 @@ def configure_vault_parameter_context(nifi_addr, vault_addr, vault_token, root_i
     return False
 
 
+def _create_processor(nifi_addr, root_id, name, proc_type, bundle, x, y, props, auto_term=None):
+    config = {"properties": props}
+    if auto_term:
+        config["autoTerminatedRelationships"] = auto_term
+    res = request(
+        f"{nifi_addr}/nifi-api/process-groups/{root_id}/processors",
+        data={
+            "revision": {"version": 0},
+            "component": {
+                "type": proc_type,
+                "name": name,
+                "position": {"x": x, "y": y},
+                "bundle": bundle,
+                "config": config,
+            },
+        },
+        method="POST",
+    )
+    return res["id"]
+
+
+def _connect(nifi_addr, root_id, src_id, dst_id, relationships, bends=None):
+    comp = {
+        "source": {"id": src_id, "type": "PROCESSOR", "groupId": root_id},
+        "destination": {"id": dst_id, "type": "PROCESSOR", "groupId": root_id},
+        "selectedRelationships": relationships,
+    }
+    if bends:
+        comp["bends"] = bends
+    request(
+        f"{nifi_addr}/nifi-api/process-groups/{root_id}/connections",
+        data={"revision": {"version": 0}, "component": comp},
+        method="POST",
+    )
+
+
+def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=False):
+    flow_content = request(f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}")
+    processors = flow_content["processGroupFlow"]["flow"]["processors"]
+    connections = flow_content["processGroupFlow"]["flow"]["connections"]
+    existing_names = {p["component"]["name"] for p in processors}
+
+    if not force_rebuild and "Extract Order Attributes" in existing_names and "ExtendExternalTaskLock" in existing_names:
+        print("Multi-stage Order Fulfillment NiFi flow is already configured.")
+        return
+
+    for conn in connections:
+        try:
+            request(
+                f"{nifi_addr}/nifi-api/connections/{conn['id']}?version={conn['revision']['version']}",
+                method="DELETE",
+            )
+        except Exception:
+            pass
+    for proc in processors:
+        try:
+            request(
+                f"{nifi_addr}/nifi-api/processors/{proc['id']}?version={proc['revision']['version']}",
+                method="DELETE",
+            )
+        except Exception:
+            pass
+
+    operaton_bundle = {
+        "group": "org.operaton.bpm.extension.nifi",
+        "artifact": "operaton-nifi-processors-nar",
+        "version": "1.0-SNAPSHOT",
+    }
+    standard_bundle = {
+        "group": "org.apache.nifi",
+        "artifact": "nifi-standard-nar",
+        "version": "2.4.0",
+    }
+    update_attr_bundle = {
+        "group": "org.apache.nifi",
+        "artifact": "nifi-update-attribute-nar",
+        "version": "2.4.0",
+    }
+
+    # --- Column 1 (x=80): Stage 1 - Order Validation & Enrichment (topic: demo) ---
+    fetch_validate = _create_processor(
+        nifi_addr,
+        root_id,
+        "FetchAndLockExternalTasks",
+        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        operaton_bundle,
+        80,
+        40,
+        {
+            "External Task Service": operaton_service_id,
+            "Topic Name": "demo",
+        },
+    )
+    eval_json = _create_processor(
+        nifi_addr,
+        root_id,
+        "Extract Order Attributes",
+        "org.apache.nifi.processors.standard.EvaluateJsonPath",
+        standard_bundle,
+        80,
+        240,
+        {
+            "Destination": "flowfile-attribute",
+            "order.id": "$.orderId",
+            "order.amount": "$.amount",
+            "order.customer": "$.customer",
+        },
+        auto_term=["failure", "unmatched"],
+    )
+    route_validate = _create_processor(
+        nifi_addr,
+        root_id,
+        "Validate Order Rules",
+        "org.apache.nifi.processors.standard.RouteOnAttribute",
+        standard_bundle,
+        80,
+        440,
+        {
+            "Routing Strategy": "Route to Property name",
+            "invalid": "${order.amount:toNumber():le(0):or(${order.id:isEmpty()})}",
+        },
+    )
+    enrich_order = _create_processor(
+        nifi_addr,
+        root_id,
+        "Enrich Order Metadata",
+        "org.apache.nifi.processors.attributes.UpdateAttribute",
+        update_attr_bundle,
+        80,
+        640,
+        {
+            "validation.status": "VALIDATED",
+            "validation.worker": "nifi-worker",
+        },
+    )
+    complete_validate = _create_processor(
+        nifi_addr,
+        root_id,
+        "CompleteExternalTask",
+        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        operaton_bundle,
+        80,
+        840,
+        {
+            "External Task Service": operaton_service_id,
+        },
+        auto_term=["success"],
+    )
+
+    # --- Column 2 (x=580): Stage 2 - High-Value Fraud & Compliance (topic: order-fraud-check) ---
+    fetch_fraud = _create_processor(
+        nifi_addr,
+        root_id,
+        "Fetch Fraud Check Tasks",
+        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        operaton_bundle,
+        580,
+        40,
+        {
+            "External Task Service": operaton_service_id,
+            "Topic Name": "order-fraud-check",
+        },
+    )
+    extend_lock = _create_processor(
+        nifi_addr,
+        root_id,
+        "ExtendExternalTaskLock",
+        "org.operaton.bpm.extension.nifi.processor.ExtendExternalTaskLock",
+        operaton_bundle,
+        580,
+        240,
+        {
+            "External Task Service": operaton_service_id,
+            "Lock Duration": "10 min",
+        },
+        auto_term=["failure"],
+    )
+    route_fraud = _create_processor(
+        nifi_addr,
+        root_id,
+        "Evaluate Fraud Risk",
+        "org.apache.nifi.processors.standard.RouteOnAttribute",
+        standard_bundle,
+        580,
+        440,
+        {
+            "Routing Strategy": "Route to Property name",
+            "fraud_suspected": "${order.amount:toNumber():gt(10000)}",
+        },
+    )
+    complete_fraud = _create_processor(
+        nifi_addr,
+        root_id,
+        "Complete Fraud Check",
+        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        operaton_bundle,
+        580,
+        640,
+        {
+            "External Task Service": operaton_service_id,
+        },
+        auto_term=["success"],
+    )
+    bpmn_error = _create_processor(
+        nifi_addr,
+        root_id,
+        "HandleExternalTaskBpmnError",
+        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
+        operaton_bundle,
+        580,
+        840,
+        {
+            "External Task Service": operaton_service_id,
+            "Error Code": "FRAUD_DETECTED",
+            "Error Message": "Order ${order.id} escalated to Manual Order Review",
+        },
+        auto_term=["success"],
+    )
+
+    # --- Column 3 (x=1080 & x=1520): Stage 3 - Payment, Shipment & Incident Handling ---
+    fetch_payment = _create_processor(
+        nifi_addr,
+        root_id,
+        "Fetch Payment Tasks",
+        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        operaton_bundle,
+        1080,
+        40,
+        {
+            "External Task Service": operaton_service_id,
+            "Topic Name": "order-payment",
+        },
+    )
+    fetch_shipment = _create_processor(
+        nifi_addr,
+        root_id,
+        "Fetch Shipment Tasks",
+        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        operaton_bundle,
+        1520,
+        40,
+        {
+            "External Task Service": operaton_service_id,
+            "Topic Name": "order-shipment",
+        },
+    )
+    complete_fulfillment = _create_processor(
+        nifi_addr,
+        root_id,
+        "Complete Payment & Shipment",
+        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        operaton_bundle,
+        1300,
+        340,
+        {
+            "External Task Service": operaton_service_id,
+        },
+        auto_term=["success"],
+    )
+    handle_failure = _create_processor(
+        nifi_addr,
+        root_id,
+        "HandleExternalTaskFailure",
+        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskFailure",
+        operaton_bundle,
+        1300,
+        740,
+        {
+            "External Task Service": operaton_service_id,
+            "Default Retries": "3",
+            "Retry Timeout": "1 min",
+        },
+        auto_term=["success", "failure"],
+    )
+
+    # Connect Column 1
+    _connect(nifi_addr, root_id, fetch_validate, eval_json, ["success"])
+    _connect(nifi_addr, root_id, eval_json, route_validate, ["matched"])
+    _connect(nifi_addr, root_id, route_validate, enrich_order, ["unmatched"])
+    _connect(nifi_addr, root_id, enrich_order, complete_validate, ["success"])
+    _connect(
+        nifi_addr,
+        root_id,
+        route_validate,
+        bpmn_error,
+        ["invalid"],
+        bends=[{"x": 490, "y": 580}],
+    )
+
+    # Connect Column 2
+    _connect(nifi_addr, root_id, fetch_fraud, extend_lock, ["success"])
+    _connect(nifi_addr, root_id, extend_lock, route_fraud, ["success"])
+    _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
+    _connect(
+        nifi_addr,
+        root_id,
+        route_fraud,
+        bpmn_error,
+        ["fraud_suspected"],
+        bends=[{"x": 1000, "y": 690}],
+    )
+
+    # Connect Column 3 & Failure Handling
+    _connect(nifi_addr, root_id, fetch_payment, complete_fulfillment, ["success"])
+    _connect(nifi_addr, root_id, fetch_shipment, complete_fulfillment, ["success"])
+    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure"])
+    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure"])
+    _connect(nifi_addr, root_id, bpmn_error, handle_failure, ["failure"])
+    _connect(
+        nifi_addr,
+        root_id,
+        complete_validate,
+        handle_failure,
+        ["failure"],
+        bends=[{"x": 760, "y": 1030}],
+    )
+
+    print("Created 3-stage Order Fulfillment & Fraud Compliance flow in NiFi.")
+
+
 def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://localhost:8080/engine-rest"):
     print("Configuring NiFi components...")
     root_flow = request(f"{nifi_addr}/nifi-api/flow/process-groups/root")
@@ -397,7 +919,6 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
     except Exception as e:
         print(f"Notice configuring Vault Parameter Provider: {e}")
 
-    # Check existing controller services in root process group
     services_flow = request(f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}/controller-services")
     existing_services = {
         s["component"]["name"]: s for s in services_flow.get("controllerServices", [])
@@ -463,7 +984,6 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
         except Exception as e:
             print(f"Error creating StandardOperatonExternalTaskService: {e}")
 
-    # Process-group-level StandardHashiCorpVaultClientService
     vault_props = {
         "configuration-strategy": "direct-properties",
         "vault.uri": vault_addr,
@@ -515,144 +1035,11 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
         except Exception as e:
             print(f"Notice creating StandardHashiCorpVaultClientService: {e}")
 
-    # Check processors in root group
-    flow_content = request(f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}")
-    processors = flow_content["processGroupFlow"]["flow"]["processors"]
-    existing_procs = {p["component"]["name"]: p for p in processors}
-
-    if "FetchAndLockExternalTasks" not in existing_procs and operaton_service_id:
+    if operaton_service_id:
         try:
-            fetch_res = request(
-                f"{nifi_addr}/nifi-api/process-groups/{root_id}/processors",
-                data={
-                    "revision": {"version": 0},
-                    "component": {
-                        "type": "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
-                        "name": "FetchAndLockExternalTasks",
-                        "position": {"x": 300, "y": 100},
-                        "bundle": {
-                            "group": "org.operaton.bpm.extension.nifi",
-                            "artifact": "operaton-nifi-processors-nar",
-                            "version": "1.0-SNAPSHOT",
-                        },
-                        "config": {
-                            "properties": {
-                                "External Task Service": operaton_service_id,
-                                "Topic Name": "demo",
-                            },
-                        },
-                    },
-                },
-                method="POST",
-            )
-            fetch_id = fetch_res["id"]
-            print("Created FetchAndLockExternalTasks processor.")
-
-            complete_res = request(
-                f"{nifi_addr}/nifi-api/process-groups/{root_id}/processors",
-                data={
-                    "revision": {"version": 0},
-                    "component": {
-                        "type": "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
-                        "name": "CompleteExternalTask",
-                        "position": {"x": 300, "y": 350},
-                        "bundle": {
-                            "group": "org.operaton.bpm.extension.nifi",
-                            "artifact": "operaton-nifi-processors-nar",
-                            "version": "1.0-SNAPSHOT",
-                        },
-                        "config": {
-                            "properties": {
-                                "External Task Service": operaton_service_id,
-                            },
-                            "autoTerminatedRelationships": ["success", "failure"],
-                        },
-                    },
-                },
-                method="POST",
-            )
-            complete_id = complete_res["id"]
-            print("Created CompleteExternalTask processor.")
-
-            # Connect FetchAndLockExternalTasks -> CompleteExternalTask
-            request(
-                f"{nifi_addr}/nifi-api/process-groups/{root_id}/connections",
-                data={
-                    "revision": {"version": 0},
-                    "component": {
-                        "source": {"id": fetch_id, "type": "PROCESSOR", "groupId": root_id},
-                        "destination": {"id": complete_id, "type": "PROCESSOR", "groupId": root_id},
-                        "selectedRelationships": ["success"],
-                    },
-                },
-                method="POST",
-            )
-            print("Connected FetchAndLockExternalTasks -> CompleteExternalTask.")
+            configure_nifi_flow(nifi_addr, root_id, operaton_service_id)
         except Exception as e:
-            print(f"Notice setting up demo flow: {e}")
-
-    if "HandleExternalTaskFailure" not in existing_procs and operaton_service_id:
-        try:
-            failure_res = request(
-                f"{nifi_addr}/nifi-api/process-groups/{root_id}/processors",
-                data={
-                    "revision": {"version": 0},
-                    "component": {
-                        "type": "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskFailure",
-                        "name": "HandleExternalTaskFailure",
-                        "position": {"x": 750, "y": 350},
-                        "bundle": {
-                            "group": "org.operaton.bpm.extension.nifi",
-                            "artifact": "operaton-nifi-processors-nar",
-                            "version": "1.0-SNAPSHOT",
-                        },
-                        "config": {
-                            "properties": {
-                                "External Task Service": operaton_service_id,
-                            },
-                            "autoTerminatedRelationships": ["success", "failure"],
-                        },
-                    },
-                },
-                method="POST",
-            )
-            failure_id = failure_res["id"]
-            print("Created HandleExternalTaskFailure processor.")
-
-            # Connect CompleteExternalTask (failure) -> HandleExternalTaskFailure
-            flow_content = request(f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}")
-            procs = {p["component"]["name"]: p for p in flow_content["processGroupFlow"]["flow"]["processors"]}
-            if "CompleteExternalTask" in procs:
-                comp_proc = procs["CompleteExternalTask"]
-                comp_id = comp_proc["id"]
-                request(
-                    f"{nifi_addr}/nifi-api/ processors/{comp_id}".replace(" ", ""),
-                    data={
-                        "revision": comp_proc["revision"],
-                        "component": {
-                            "id": comp_id,
-                            "config": {
-                                "autoTerminatedRelationships": ["success"],
-                            },
-                        },
-                    },
-                    method="PUT",
-                )
-                request(
-                    f"{nifi_addr}/nifi-api/process-groups/{root_id}/connections",
-                    data={
-                        "revision": {"version": 0},
-                        "component": {
-                            "source": {"id": comp_id, "type": "PROCESSOR", "groupId": root_id},
-                            "destination": {"id": failure_id, "type": "PROCESSOR", "groupId": root_id},
-                            "selectedRelationships": ["failure"],
-                        },
-                    },
-                    method="POST",
-                )
-                print("Connected CompleteExternalTask (failure) -> HandleExternalTaskFailure.")
-        except Exception as e:
-            print(f"Notice setting up HandleExternalTaskFailure: {e}")
+            print(f"Notice configuring NiFi flow: {e}")
 
     print("Preconfiguration complete!")
 
