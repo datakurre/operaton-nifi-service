@@ -1,0 +1,530 @@
+[
+  {
+    "$schema": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler/-/jobs/artifacts/v0.9.1/raw/operaton-element-templates-schema-v0.9.1.json?job=release",
+    "name": "NiFi External Task",
+    "id": "org.operaton.nifi.external-task",
+    "version": 1,
+    "description": "Configures an external service task to be executed by an Apache NiFi worker via Operaton external task locking.",
+    "documentationRef": "https://github.com/operaton/operaton-nifi-service",
+    "keywords": [
+      "nifi",
+      "worker",
+      "external task",
+      "flowfile"
+    ],
+    "appliesTo": [
+      "bpmn:ServiceTask"
+    ],
+    "elementType": {
+      "value": "bpmn:ServiceTask"
+    },
+    "icon": {
+      "contents": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%230284c7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z'/%3E%3C/svg%3E"
+    },
+    "groups": [
+      {
+        "id": "task",
+        "label": "External Task"
+      },
+      {
+        "id": "routing",
+        "label": "NiFi Routing & Extension Properties"
+      },
+      {
+        "id": "payload",
+        "label": "Input Parameters & Variables"
+      },
+      {
+        "id": "jobs",
+        "label": "Job Execution & Async Continuation"
+      }
+    ],
+    "properties": [
+      {
+        "label": "Implementation Type",
+        "type": "Hidden",
+        "value": "external",
+        "binding": {
+          "type": "property",
+          "name": "camunda:type"
+        }
+      },
+      {
+        "label": "Topic Name",
+        "description": "External task topic name subscribed to by NiFi FetchAndLockExternalTasks processor.",
+        "type": "String",
+        "value": "nifi-tasks",
+        "group": "task",
+        "constraints": {
+          "notEmpty": true,
+          "pattern": {
+            "value": "^[a-zA-Z0-9._-]+$",
+            "message": "Topic name may contain letters, digits, dots, dashes, and underscores."
+          }
+        },
+        "binding": {
+          "type": "property",
+          "name": "camunda:topic"
+        }
+      },
+      {
+        "label": "Task Priority",
+        "description": "Task priority used when NiFi fetches tasks with 'Use Priority' enabled. Higher values take precedence.",
+        "type": "String",
+        "placeholder": "e.g. 50 or ${priority}",
+        "group": "task",
+        "constraints": {
+          "pattern": {
+            "value": "^(\\d+|\\$\\{.+\\})?$",
+            "message": "Must be an integer or an expression like ${priority}."
+          }
+        },
+        "binding": {
+          "type": "property",
+          "name": "camunda:taskPriority"
+        }
+      },
+      {
+        "label": "Action",
+        "description": "Custom action identifier passed to NiFi as 'operaton.externalTask.extensionProperty.action' attribute (used for RouteOnAttribute).",
+        "type": "String",
+        "placeholder": "e.g. process-order, sync-record",
+        "group": "routing",
+        "binding": {
+          "type": "camunda:property",
+          "name": "action"
+        }
+      },
+      {
+        "label": "Routing Key",
+        "description": "Destination route or channel passed to NiFi as 'operaton.externalTask.extensionProperty.routingKey' attribute.",
+        "type": "String",
+        "placeholder": "e.g. queue:orders, events.billing",
+        "group": "routing",
+        "binding": {
+          "type": "camunda:property",
+          "name": "routingKey"
+        }
+      },
+      {
+        "label": "Variables Format",
+        "description": "Format for variables passed to NiFi ('Simple JSON' or 'Operaton Typed JSON').",
+        "type": "Dropdown",
+        "value": "Simple JSON",
+        "group": "routing",
+        "choices": [
+          {
+            "name": "Simple JSON (Default)",
+            "value": "Simple JSON"
+          },
+          {
+            "name": "Operaton Typed JSON",
+            "value": "Operaton Typed JSON"
+          }
+        ],
+        "binding": {
+          "type": "camunda:property",
+          "name": "variablesFormat"
+        }
+      },
+      {
+        "label": "Input Parameters",
+        "description": "Additional local input parameters passed to the external task and fetched into the FlowFile content.",
+        "type": "Map",
+        "group": "payload",
+        "binding": {
+          "type": "camunda:additionalInputParameters"
+        }
+      },
+      {
+        "label": "Asynchronous Before",
+        "description": "Creates a transaction boundary and savepoint before the external task is created.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:asyncBefore"
+        }
+      },
+      {
+        "label": "Asynchronous After",
+        "description": "Creates a transaction boundary immediately after the external task is completed by NiFi.",
+        "type": "Boolean",
+        "value": false,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:asyncAfter"
+        }
+      },
+      {
+        "label": "Exclusive",
+        "description": "Ensures that asynchronous jobs for this process instance execute sequentially.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:exclusive"
+        }
+      },
+      {
+        "label": "Job Priority",
+        "description": "Priority of the job definition for the Operaton Job Executor.",
+        "type": "String",
+        "placeholder": "e.g. 10 or ${priority}",
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:jobPriority"
+        }
+      }
+    ]
+  },
+  {
+    "$schema": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler/-/jobs/artifacts/v0.9.1/raw/operaton-element-templates-schema-v0.9.1.json?job=release",
+    "name": "NiFi External Task with BPMN Error",
+    "id": "org.operaton.nifi.external-task-with-error",
+    "version": 1,
+    "description": "Configures an external service task with a pre-defined BPMN Error definition matching NiFi HandleExternalTaskBpmnError.",
+    "documentationRef": "https://github.com/operaton/operaton-nifi-service",
+    "keywords": [
+      "nifi",
+      "worker",
+      "external task",
+      "error",
+      "bpmn error"
+    ],
+    "appliesTo": [
+      "bpmn:ServiceTask"
+    ],
+    "elementType": {
+      "value": "bpmn:ServiceTask"
+    },
+    "icon": {
+      "contents": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23e03e3e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E"
+    },
+    "groups": [
+      {
+        "id": "task",
+        "label": "External Task"
+      },
+      {
+        "id": "errors",
+        "label": "BPMN Business Error"
+      },
+      {
+        "id": "routing",
+        "label": "NiFi Routing & Extension Properties"
+      },
+      {
+        "id": "payload",
+        "label": "Input Parameters & Variables"
+      },
+      {
+        "id": "jobs",
+        "label": "Job Execution & Async Continuation"
+      }
+    ],
+    "properties": [
+      {
+        "label": "Implementation Type",
+        "type": "Hidden",
+        "value": "external",
+        "binding": {
+          "type": "property",
+          "name": "camunda:type"
+        }
+      },
+      {
+        "label": "Topic Name",
+        "description": "External task topic name subscribed to by NiFi FetchAndLockExternalTasks processor.",
+        "type": "String",
+        "value": "nifi-tasks",
+        "group": "task",
+        "constraints": {
+          "notEmpty": true,
+          "pattern": {
+            "value": "^[a-zA-Z0-9._-]+$",
+            "message": "Topic name may contain letters, digits, dots, dashes, and underscores."
+          }
+        },
+        "binding": {
+          "type": "property",
+          "name": "camunda:topic"
+        }
+      },
+      {
+        "label": "Task Priority",
+        "description": "Task priority used when NiFi fetches tasks with 'Use Priority' enabled.",
+        "type": "String",
+        "placeholder": "e.g. 50 or ${priority}",
+        "group": "task",
+        "constraints": {
+          "pattern": {
+            "value": "^(\\d+|\\$\\{.+\\})?$",
+            "message": "Must be an integer or an expression like ${priority}."
+          }
+        },
+        "binding": {
+          "type": "property",
+          "name": "camunda:taskPriority"
+        }
+      },
+      {
+        "label": "Error Condition Expression",
+        "description": "Expression evaluated on external task completion to trigger the BPMN error, or used with boundary error events.",
+        "type": "String",
+        "value": "${ error.code == 'NIFI_ERROR' }",
+        "group": "errors",
+        "binding": {
+          "type": "camunda:errorEventDefinition",
+          "errorRef": "nifi-processing-error"
+        }
+      },
+      {
+        "label": "Action",
+        "description": "Custom action identifier passed to NiFi as 'operaton.externalTask.extensionProperty.action' attribute.",
+        "type": "String",
+        "placeholder": "e.g. process-order, sync-record",
+        "group": "routing",
+        "binding": {
+          "type": "camunda:property",
+          "name": "action"
+        }
+      },
+      {
+        "label": "Routing Key",
+        "description": "Destination route or channel passed to NiFi as 'operaton.externalTask.extensionProperty.routingKey' attribute.",
+        "type": "String",
+        "placeholder": "e.g. queue:orders, events.billing",
+        "group": "routing",
+        "binding": {
+          "type": "camunda:property",
+          "name": "routingKey"
+        }
+      },
+      {
+        "label": "Variables Format",
+        "description": "Format for variables passed to NiFi ('Simple JSON' or 'Operaton Typed JSON').",
+        "type": "Dropdown",
+        "value": "Simple JSON",
+        "group": "routing",
+        "choices": [
+          {
+            "name": "Simple JSON (Default)",
+            "value": "Simple JSON"
+          },
+          {
+            "name": "Operaton Typed JSON",
+            "value": "Operaton Typed JSON"
+          }
+        ],
+        "binding": {
+          "type": "camunda:property",
+          "name": "variablesFormat"
+        }
+      },
+      {
+        "label": "Input Parameters",
+        "description": "Additional local input parameters passed to the external task and fetched into the FlowFile content.",
+        "type": "Map",
+        "group": "payload",
+        "binding": {
+          "type": "camunda:additionalInputParameters"
+        }
+      },
+      {
+        "label": "Asynchronous Before",
+        "description": "Creates a transaction boundary and savepoint before the external task is created.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:asyncBefore"
+        }
+      },
+      {
+        "label": "Asynchronous After",
+        "description": "Creates a transaction boundary immediately after the external task completes.",
+        "type": "Boolean",
+        "value": false,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:asyncAfter"
+        }
+      },
+      {
+        "label": "Exclusive",
+        "description": "Ensures that asynchronous jobs for this process instance execute sequentially.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:exclusive"
+        }
+      },
+      {
+        "label": "Job Priority",
+        "description": "Priority of the job definition for the Operaton Job Executor.",
+        "type": "String",
+        "placeholder": "e.g. 10 or ${priority}",
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:jobPriority"
+        }
+      }
+    ],
+    "scopes": [
+      {
+        "type": "bpmn:Error",
+        "id": "nifi-processing-error",
+        "properties": [
+          {
+            "label": "BPMN Error Code",
+            "description": "Error code passed by NiFi HandleExternalTaskBpmnError (matched by boundary error events).",
+            "type": "String",
+            "value": "NIFI_ERROR",
+            "constraints": {
+              "notEmpty": true
+            },
+            "binding": {
+              "type": "property",
+              "name": "errorCode"
+            }
+          },
+          {
+            "label": "BPMN Error Message",
+            "description": "Default error message associated with this BPMN error.",
+            "type": "String",
+            "value": "Business error reported by Apache NiFi worker",
+            "binding": {
+              "type": "property",
+              "name": "camunda:errorMessage"
+            }
+          },
+          {
+            "label": "Error Name",
+            "type": "Hidden",
+            "value": "NiFi Processing Error",
+            "binding": {
+              "type": "property",
+              "name": "name"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "$schema": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler/-/jobs/artifacts/v0.9.1/raw/operaton-element-templates-schema-v0.9.1.json?job=release",
+    "name": "NiFi Demo Task",
+    "id": "org.operaton.nifi.demo-task",
+    "version": 1,
+    "description": "Pre-configured external service task for the local NiFi demo pipeline (topic 'demo').",
+    "documentationRef": "https://github.com/operaton/operaton-nifi-service",
+    "keywords": [
+      "nifi",
+      "demo",
+      "worker",
+      "external task"
+    ],
+    "appliesTo": [
+      "bpmn:ServiceTask"
+    ],
+    "elementType": {
+      "value": "bpmn:ServiceTask"
+    },
+    "icon": {
+      "contents": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%230284c7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z'/%3E%3C/svg%3E"
+    },
+    "groups": [
+      {
+        "id": "task",
+        "label": "External Task"
+      },
+      {
+        "id": "routing",
+        "label": "NiFi Routing & Extension Properties"
+      },
+      {
+        "id": "jobs",
+        "label": "Job Execution & Async Continuation"
+      }
+    ],
+    "properties": [
+      {
+        "label": "Implementation Type",
+        "type": "Hidden",
+        "value": "external",
+        "binding": {
+          "type": "property",
+          "name": "camunda:type"
+        }
+      },
+      {
+        "label": "Topic Name",
+        "description": "External task topic name subscribed to by the demo NiFi processor.",
+        "type": "String",
+        "value": "demo",
+        "group": "task",
+        "constraints": {
+          "notEmpty": true
+        },
+        "binding": {
+          "type": "property",
+          "name": "camunda:topic"
+        }
+      },
+      {
+        "label": "Task Priority",
+        "description": "Task priority used when NiFi fetches tasks with 'Use Priority' enabled.",
+        "type": "String",
+        "placeholder": "e.g. 50 or ${priority}",
+        "group": "task",
+        "binding": {
+          "type": "property",
+          "name": "camunda:taskPriority"
+        }
+      },
+      {
+        "label": "Action",
+        "description": "Custom action identifier passed to NiFi as 'operaton.externalTask.extensionProperty.action'.",
+        "type": "String",
+        "value": "demo-process",
+        "group": "routing",
+        "binding": {
+          "type": "camunda:property",
+          "name": "action"
+        }
+      },
+      {
+        "label": "Asynchronous Before",
+        "description": "Creates a transaction boundary and savepoint before the external task is created.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:asyncBefore"
+        }
+      },
+      {
+        "label": "Exclusive",
+        "description": "Ensures that asynchronous jobs for this process instance execute sequentially.",
+        "type": "Boolean",
+        "value": true,
+        "group": "jobs",
+        "binding": {
+          "type": "property",
+          "name": "camunda:exclusive"
+        }
+      }
+    ]
+  }
+]
