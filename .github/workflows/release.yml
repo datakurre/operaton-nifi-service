@@ -28,7 +28,7 @@ jobs:
       - name: Install devenv
         run: nix profile install --accept-flake-config nixpkgs#devenv
 
-      - name: Build NAR packages
+      - name: Build NAR and JAR packages
         run: devenv shell -- build
 
       - name: Publish GitHub Release
@@ -38,4 +38,7 @@ jobs:
             nifi-controller/nifi-controller-api-nar/target/*.nar
             nifi-controller/nifi-controller-nar/target/*.nar
             nifi-processor/nifi-processor-nar/target/*.nar
+            nifi-controller/nifi-controller-api/target/*.jar
+            nifi-controller/nifi-controller/target/*.jar
+            nifi-processor/nifi-processor-processors/target/*.jar
           generate_release_notes: true
