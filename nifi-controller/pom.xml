@@ -20,6 +20,7 @@
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-extension-bundles</artifactId>
         <version>2.4.0</version>
+        <relativePath/>
     </parent>
 
     <groupId>org.operaton.bpm.extension.nifi</groupId>

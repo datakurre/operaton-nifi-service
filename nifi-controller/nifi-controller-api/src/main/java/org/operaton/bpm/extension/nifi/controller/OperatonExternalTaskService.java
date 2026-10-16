@@ -23,6 +23,37 @@ public interface OperatonExternalTaskService extends ControllerService {
     String getWorkerId();
 
     /**
+     * Extended query parameters for {@link #fetchAndLock(FetchAndLockQuery)} matching
+     * Operaton's {@code POST /external-task/fetchAndLock} payload.
+     */
+    record FetchAndLockQuery(
+            String topicName,
+            int maxTasks,
+            long lockDuration,
+            List<String> variables,
+            long asyncResponseTimeout,
+            boolean usePriority,
+            boolean localVariables,
+            boolean deserializeValues,
+            boolean includeExtensionProperties,
+            String businessKey,
+            String processDefinitionId,
+            List<String> processDefinitionIdIn,
+            String processDefinitionKey,
+            List<String> processDefinitionKeyIn,
+            String processDefinitionVersionTag,
+            boolean withoutTenantId,
+            List<String> tenantIdIn,
+            String processVariablesJson) {
+
+        public FetchAndLockQuery(String topicName, int maxTasks, long lockDuration,
+                                 List<String> variables, long asyncResponseTimeout) {
+            this(topicName, maxTasks, lockDuration, variables, asyncResponseTimeout,
+                    true, false, true, false, null, null, null, null, null, null, false, null, null);
+        }
+    }
+
+    /**
      * Fetch and lock external tasks of a single topic.
      *
      * @param topicName topic to fetch tasks for
@@ -35,6 +66,17 @@ public interface OperatonExternalTaskService extends ControllerService {
     List<ExternalTask> fetchAndLock(String topicName, int maxTasks, long lockDuration,
                                     List<String> variables, long asyncResponseTimeout)
             throws OperatonException;
+
+    /**
+     * Fetch and lock external tasks using extended topic filters and options.
+     *
+     * @param query fetch and lock query parameters
+     * @return locked tasks, possibly empty
+     */
+    default List<ExternalTask> fetchAndLock(FetchAndLockQuery query) throws OperatonException {
+        return fetchAndLock(query.topicName(), query.maxTasks(), query.lockDuration(),
+                query.variables(), query.asyncResponseTimeout());
+    }
 
     /**
      * Complete a locked external task.
@@ -52,6 +94,20 @@ public interface OperatonExternalTaskService extends ControllerService {
      */
     void handleFailure(String taskId, String errorMessage, String errorDetails,
                        int retries, long retryTimeout) throws OperatonException;
+
+    /**
+     * Report a failure and optionally set process or local variables on the task's execution.
+     *
+     * @param retryTimeout milliseconds until the task can be fetched again
+     * @param variablesJson typed process variables to set, or {@code null}
+     * @param localVariablesJson typed local variables to set, or {@code null}
+     */
+    default void handleFailure(String taskId, String errorMessage, String errorDetails,
+                               int retries, long retryTimeout,
+                               String variablesJson, String localVariablesJson)
+            throws OperatonException {
+        handleFailure(taskId, errorMessage, errorDetails, retries, retryTimeout);
+    }
 
     /**
      * Throw a BPMN error to be caught by a boundary or event sub process.

@@ -23,13 +23,22 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: vasara-bpm
+          extraPullNames: devenv
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
       - name: Install devenv
         run: nix profile install --accept-flake-config nixpkgs#devenv
 
+      - name: Build NAR packages
+        run: devenv shell -- build -DskipTests
+
       - name: Run devenv tests
         run: devenv test
-
-      - name: Build NAR packages
-        run: devenv shell -- build

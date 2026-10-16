@@ -299,12 +299,70 @@ public class ExternalTaskProcessorsTest {
     @Test
     public void testExtendLock() throws Exception {
         TestRunner runner = runner(ExtendExternalTaskLock.class);
-        runner.setProperty(ExtendExternalTaskLock.LOCK_DURATION, "10 min");
+        runner.setProperty(ExtendExternalTaskLock.LOCK_DURATION, "${lockDuration}");
 
-        runner.enqueue("", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.enqueue("", Map.of(ExternalTaskAttributes.ID, "task-1", "lockDuration", "10 min"));
         runner.run();
 
         runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_SUCCESS, 1);
         assertEquals(List.of("task-1", 600000L), service.lastCall().args());
+    }
+
+    @Test
+    public void testFetchAndLockWithExtendedFiltersAndAttributes() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        runner.setProperty(FetchAndLockExternalTasks.BUSINESS_KEY, "bk-99");
+        runner.setProperty(FetchAndLockExternalTasks.PROCESS_DEFINITION_KEY, "order-proc");
+        runner.setProperty(FetchAndLockExternalTasks.LOCAL_VARIABLES, "true");
+        runner.setProperty(FetchAndLockExternalTasks.INCLUDE_EXTENSION_PROPERTIES, "true");
+        runner.setProperty(FetchAndLockExternalTasks.TENANT_IDS, "t1, t2");
+
+        service.tasks.add(new ExternalTask(
+                "task-ext", "orders", "worker-1", "Act_1", "Act_1:1", "ex-1",
+                "pi-1", "pd-1", "order-proc", "v1.2", "bk-99", "t1",
+                2, 10L, "2026-10-16T08:00:00.000+0000", "2026-10-16T08:05:00.000+0000",
+                "last err", "last stack", "{}", Map.of("targetQueue", "priority-high")));
+
+        runner.run();
+
+        assertEquals("fetchAndLockQuery", service.lastCall().method());
+        runner.assertAllFlowFilesTransferred(FetchAndLockExternalTasks.REL_SUCCESS, 1);
+        MockFlowFile flowFile = runner.getFlowFilesForRelationship(FetchAndLockExternalTasks.REL_SUCCESS).get(0);
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.PROCESS_DEFINITION_VERSION_TAG, "v1.2");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.CREATE_TIME, "2026-10-16T08:00:00.000+0000");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.TASK_ERROR_MESSAGE, "last err");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.TASK_ERROR_DETAILS, "last stack");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.EXTENSION_PROPERTY_PREFIX + "targetQueue",
+                "priority-high");
+    }
+
+    @Test
+    public void testHandleFailureWithVariables() throws Exception {
+        TestRunner runner = runner(HandleExternalTaskFailure.class);
+        runner.setProperty(HandleExternalTaskFailure.VARIABLES_FORMAT, VariablesFormat.SIMPLE);
+        runner.setProperty(HandleExternalTaskFailure.LOCAL_VARIABLES, "true");
+
+        runner.enqueue("{\"attempt\": 1}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_SUCCESS, 1);
+        List<Object> args = service.lastCall().args();
+        assertEquals(7, args.size());
+        assertNull(args.get(5));
+        assertEquals(json("{\"attempt\": {\"type\": \"Integer\", \"value\": 1}}"),
+                json((String) args.get(6)));
+    }
+
+    @Test
+    public void testUnlockExternalTask() throws Exception {
+        TestRunner runner = runner(UnlockExternalTask.class);
+
+        runner.enqueue("", Map.of(ExternalTaskAttributes.ID, "task-99"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_SUCCESS, 1);
+        assertEquals("unlock", service.lastCall().method());
+        assertEquals(List.of("task-99"), service.lastCall().args());
     }
 }

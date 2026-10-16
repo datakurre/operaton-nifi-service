@@ -89,7 +89,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    packages = [ cfg.jdk ];
+    packages = [
+      cfg.jdk
+      pkgs.maven
+    ];
 
     env = {
       NIFI_HOME = nifiHome;
@@ -130,6 +133,25 @@ in
         rm -rf "$home"/bin "$home"/lib
         cp -rs $dist/lib "$home"/lib
 
+        # Build NARs first if none exist yet (e.g. fresh clone)
+        has_nars=0
+        for dir in ${lib.escapeShellArgs cfg.narPaths}; do
+          case "$dir" in
+            /*) nar_pattern="$dir"/*.nar ;;
+            *) nar_pattern="$DEVENV_ROOT/$dir"/*.nar ;;
+          esac
+          for nar in $nar_pattern; do
+            if [ -e "$nar" ]; then
+              has_nars=1
+              break
+            fi
+          done
+        done
+        if [ "$has_nars" = 0 ]; then
+          echo "No built NARs found; running 'mvn -B package -DskipTests'..."
+          (cd "$DEVENV_ROOT" && JAVA_HOME=${cfg.jdk} mvn -B package -DskipTests)
+        fi
+
         # Deploy built NARs into extensions directory
         for dir in ${lib.escapeShellArgs cfg.narPaths}; do
           case "$dir" in
@@ -158,13 +180,20 @@ in
         done
         chmod -R u+w "$home"/conf
 
+        proxy_host="${cfg.proxyHost}"
+        if [ -n "''${CODESPACE_NAME:-}" ]; then
+          cs_domain="''${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+          cs_host="''${CODESPACE_NAME}-${toString cfg.port}.''${cs_domain}"
+          proxy_host="''${proxy_host},''${cs_host},''${cs_host}:443"
+        fi
+
         # Plain HTTP without authentication: suitable for local development only.
         sed -i "$home"/conf/nifi.properties \
           -e 's|^nifi.web.http.host=.*|nifi.web.http.host=${cfg.host}|' \
           -e 's|^nifi.web.http.port=.*|nifi.web.http.port=${toString cfg.port}|' \
           -e 's|^nifi.web.https.host=.*|nifi.web.https.host=|' \
           -e 's|^nifi.web.https.port=.*|nifi.web.https.port=|' \
-          -e 's|^nifi.web.proxy.host=.*|nifi.web.proxy.host=${cfg.proxyHost}|' \
+          -e "s|^nifi.web.proxy.host=.*|nifi.web.proxy.host=$proxy_host|" \
           -e 's|^nifi.remote.input.secure=.*|nifi.remote.input.secure=false|' \
           -e 's|^nifi.security.keystore=.*|nifi.security.keystore=|' \
           -e 's|^nifi.security.keystoreType=.*|nifi.security.keystoreType=|' \

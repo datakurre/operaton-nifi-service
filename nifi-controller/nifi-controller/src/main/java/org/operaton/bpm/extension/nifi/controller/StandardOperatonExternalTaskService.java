@@ -10,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -31,7 +33,7 @@ import org.apache.nifi.processor.util.StandardValidators;
 
 @Tags({"operaton", "bpmn", "external task", "workflow", "rest"})
 @CapabilityDescription("Operaton External Task client using the Operaton REST API "
-        + "(fetch and lock, complete, failure, BPMN error, extend lock).")
+        + "(fetch and lock, complete, failure, BPMN error, extend lock, unlock).")
 public class StandardOperatonExternalTaskService extends AbstractControllerService
         implements OperatonExternalTaskService {
 
@@ -71,6 +73,15 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .dependsOn(USERNAME)
             .build();
 
+    public static final PropertyDescriptor BEARER_TOKEN = new PropertyDescriptor.Builder()
+            .name("Bearer Token")
+            .description("Bearer token for HTTP OAuth2 / token authentication. Takes precedence over "
+                    + "Username/Password when set.")
+            .required(false)
+            .sensitive(true)
+            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .build();
+
     public static final PropertyDescriptor REQUEST_TIMEOUT = new PropertyDescriptor.Builder()
             .name("Request Timeout")
             .description("Timeout for REST requests. Long polling timeouts of fetch and lock "
@@ -84,7 +95,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     private static final int MAX_ERROR_LENGTH = 500;
 
     private static final List<PropertyDescriptor> PROPERTIES =
-            List.of(REST_URL, WORKER_ID, USERNAME, PASSWORD, REQUEST_TIMEOUT);
+            List.of(REST_URL, WORKER_ID, USERNAME, PASSWORD, BEARER_TOKEN, REQUEST_TIMEOUT);
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -107,8 +118,11 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         requestTimeout = Duration.ofMillis(
                 context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
 
+        String bearerToken = context.getProperty(BEARER_TOKEN).getValue();
         String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
-        if (username != null) {
+        if (bearerToken != null && !bearerToken.isBlank()) {
+            authorization = "Bearer " + bearerToken.trim();
+        } else if (username != null) {
             String password = context.getProperty(PASSWORD).getValue();
             String credentials = username + ":" + (password == null ? "" : password);
             authorization = "Basic " + Base64.getEncoder()
@@ -142,23 +156,66 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     public List<ExternalTask> fetchAndLock(String topicName, int maxTasks, long lockDuration,
                                            List<String> variables, long asyncResponseTimeout)
             throws OperatonException {
+        return fetchAndLock(new FetchAndLockQuery(
+                topicName, maxTasks, lockDuration, variables, asyncResponseTimeout));
+    }
+
+    @Override
+    public List<ExternalTask> fetchAndLock(FetchAndLockQuery query) throws OperatonException {
         ObjectNode body = mapper.createObjectNode()
                 .put("workerId", workerId)
-                .put("maxTasks", maxTasks)
-                .put("usePriority", true);
-        if (asyncResponseTimeout > 0) {
-            body.put("asyncResponseTimeout", asyncResponseTimeout);
+                .put("maxTasks", query.maxTasks())
+                .put("usePriority", query.usePriority());
+        if (query.asyncResponseTimeout() > 0) {
+            body.put("asyncResponseTimeout", query.asyncResponseTimeout());
         }
         ObjectNode topic = body.putArray("topics").addObject()
-                .put("topicName", topicName)
-                .put("lockDuration", lockDuration);
-        if (variables != null) {
+                .put("topicName", query.topicName())
+                .put("lockDuration", query.lockDuration());
+        if (query.variables() != null) {
             ArrayNode names = topic.putArray("variables");
-            variables.forEach(names::add);
+            query.variables().forEach(names::add);
         }
+        if (query.localVariables()) {
+            topic.put("localVariables", true);
+        }
+        if (!query.deserializeValues()) {
+            topic.put("deserializeValues", false);
+        }
+        if (query.includeExtensionProperties()) {
+            topic.put("includeExtensionProperties", true);
+        }
+        if (query.businessKey() != null && !query.businessKey().isBlank()) {
+            topic.put("businessKey", query.businessKey());
+        }
+        if (query.processDefinitionId() != null && !query.processDefinitionId().isBlank()) {
+            topic.put("processDefinitionId", query.processDefinitionId());
+        }
+        if (query.processDefinitionIdIn() != null && !query.processDefinitionIdIn().isEmpty()) {
+            ArrayNode ids = topic.putArray("processDefinitionIdIn");
+            query.processDefinitionIdIn().forEach(ids::add);
+        }
+        if (query.processDefinitionKey() != null && !query.processDefinitionKey().isBlank()) {
+            topic.put("processDefinitionKey", query.processDefinitionKey());
+        }
+        if (query.processDefinitionKeyIn() != null && !query.processDefinitionKeyIn().isEmpty()) {
+            ArrayNode keys = topic.putArray("processDefinitionKeyIn");
+            query.processDefinitionKeyIn().forEach(keys::add);
+        }
+        if (query.processDefinitionVersionTag() != null && !query.processDefinitionVersionTag().isBlank()) {
+            topic.put("processDefinitionVersionTag", query.processDefinitionVersionTag());
+        }
+        if (query.withoutTenantId()) {
+            topic.put("withoutTenantId", true);
+        }
+        if (query.tenantIdIn() != null && !query.tenantIdIn().isEmpty()) {
+            ArrayNode tenants = topic.putArray("tenantIdIn");
+            query.tenantIdIn().forEach(tenants::add);
+        }
+        putVariables(topic, "processVariables", query.processVariablesJson());
 
         JsonNode response = post("/external-task/fetchAndLock", body,
-                requestTimeout.plusMillis(Math.max(asyncResponseTimeout, 0)));
+                requestTimeout.plusMillis(Math.max(query.asyncResponseTimeout(), 0)));
 
         List<ExternalTask> tasks = new ArrayList<>();
         if (response != null) {
@@ -181,12 +238,22 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     @Override
     public void handleFailure(String taskId, String errorMessage, String errorDetails,
                               int retries, long retryTimeout) throws OperatonException {
+        handleFailure(taskId, errorMessage, errorDetails, retries, retryTimeout, null, null);
+    }
+
+    @Override
+    public void handleFailure(String taskId, String errorMessage, String errorDetails,
+                              int retries, long retryTimeout,
+                              String variablesJson, String localVariablesJson)
+            throws OperatonException {
         ObjectNode body = mapper.createObjectNode()
                 .put("workerId", workerId)
                 .put("errorMessage", errorMessage)
                 .put("errorDetails", errorDetails)
                 .put("retries", Math.max(retries, 0))
                 .put("retryTimeout", Math.max(retryTimeout, 0));
+        putVariables(body, "variables", variablesJson);
+        putVariables(body, "localVariables", localVariablesJson);
         post(taskPath(taskId, "failure"), body, requestTimeout);
     }
 
@@ -303,6 +370,15 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
     private static ExternalTask toExternalTask(JsonNode task) {
         JsonNode variables = task.get("variables");
+        Map<String, String> extensionProperties = new LinkedHashMap<>();
+        JsonNode extPropsNode = task.get("extensionProperties");
+        if (extPropsNode != null && extPropsNode.isObject()) {
+            extPropsNode.fields().forEachRemaining(entry -> {
+                if (entry.getValue() != null && !entry.getValue().isNull()) {
+                    extensionProperties.put(entry.getKey(), entry.getValue().asText());
+                }
+            });
+        }
         return new ExternalTask(
                 text(task, "id"),
                 text(task, "topicName"),
@@ -313,12 +389,17 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 text(task, "processInstanceId"),
                 text(task, "processDefinitionId"),
                 text(task, "processDefinitionKey"),
+                text(task, "processDefinitionVersionTag"),
                 text(task, "businessKey"),
                 text(task, "tenantId"),
                 task.hasNonNull("retries") ? task.get("retries").asInt() : null,
                 task.hasNonNull("priority") ? task.get("priority").asLong() : null,
+                text(task, "createTime"),
                 text(task, "lockExpirationTime"),
-                variables == null || variables.isNull() ? "{}" : variables.toString());
+                text(task, "errorMessage"),
+                text(task, "errorDetails"),
+                variables == null || variables.isNull() ? "{}" : variables.toString(),
+                extensionProperties);
     }
 
     private static String text(JsonNode node, String field) {

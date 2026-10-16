@@ -10,6 +10,8 @@
     (inputs.devenv-module-operaton + "/module.nix")
   ];
 
+  cachix.pull = [ "vasara-bpm" ];
+
   process.managers.process-compose.tui.enable = false;
 
   packages = [
@@ -25,6 +27,8 @@
   services.operaton = {
     enable = true;
     port = 8080;
+    deployment = "${config.devenv.root}/deployment";
+    basicAuth.enable = true;
     forwardHeadersStrategy = "native";
     package = inputs.devenv-module-operaton.packages.${pkgs.stdenv.hostPlatform.system}.default;
   };
@@ -45,7 +49,11 @@
     ];
   };
 
-  env.NIFI_ADDR = "http://127.0.0.1:8081";
+  env = {
+    NIFI_ADDR = "http://127.0.0.1:8081";
+    VAULT_ADDR = "http://127.0.0.1:8200";
+    OPERATON_REST_URL = "http://localhost:8080/engine-rest";
+  };
 
   processes.preconfigure = {
     exec = "python3 $DEVENV_ROOT/devenv/scripts/preconfigure.py";
@@ -59,6 +67,12 @@
     set -eu
     cd "$DEVENV_ROOT"
     mvn -B package "$@"
+  '';
+
+  enterTest = ''
+    set -eu
+    cd "$DEVENV_ROOT"
+    mvn -B test
   '';
 
   dotenv.disableHint = true;

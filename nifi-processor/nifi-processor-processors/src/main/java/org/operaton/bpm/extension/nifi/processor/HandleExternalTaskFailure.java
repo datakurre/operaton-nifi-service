@@ -71,6 +71,7 @@ public class HandleExternalTaskFailure extends AbstractExternalTaskProcessor {
             .description("Remaining retries to set on the first failure of a task")
             .required(true)
             .defaultValue("3")
+            .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .addValidator(StandardValidators.NON_NEGATIVE_INTEGER_VALIDATOR)
             .build();
 
@@ -79,11 +80,30 @@ public class HandleExternalTaskFailure extends AbstractExternalTaskProcessor {
             .description("How long until the task can be fetched again")
             .required(true)
             .defaultValue("1 min")
+            .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
             .build();
 
+    public static final PropertyDescriptor VARIABLES_FORMAT = new PropertyDescriptor.Builder()
+            .name("Variables Format")
+            .description("Format of the variables in FlowFile content to pass with the failure report")
+            .required(true)
+            .allowableValues(VariablesFormat.class)
+            .defaultValue(VariablesFormat.NONE)
+            .build();
+
+    public static final PropertyDescriptor LOCAL_VARIABLES = new PropertyDescriptor.Builder()
+            .name("Local Variables")
+            .description("Set variables locally on the external task's execution "
+                    + "instead of in the process instance scope")
+            .required(true)
+            .allowableValues("true", "false")
+            .defaultValue("false")
+            .build();
+
     private static final List<PropertyDescriptor> PROPERTIES =
-            properties(ERROR_MESSAGE, ERROR_DETAILS, RETRIES, DEFAULT_RETRIES, RETRY_TIMEOUT);
+            properties(ERROR_MESSAGE, ERROR_DETAILS, RETRIES, DEFAULT_RETRIES, RETRY_TIMEOUT,
+                    VARIABLES_FORMAT, LOCAL_VARIABLES);
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
@@ -93,11 +113,24 @@ public class HandleExternalTaskFailure extends AbstractExternalTaskProcessor {
     @Override
     protected void handle(ProcessContext context, ProcessSession session, FlowFile flowFile,
                           OperatonExternalTaskService service, String taskId) throws Exception {
-        service.handleFailure(taskId,
-                context.getProperty(ERROR_MESSAGE).evaluateAttributeExpressions(flowFile).getValue(),
-                context.getProperty(ERROR_DETAILS).evaluateAttributeExpressions(flowFile).getValue(),
-                retries(context, flowFile),
-                context.getProperty(RETRY_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
+        String errorMessage = context.getProperty(ERROR_MESSAGE)
+                .evaluateAttributeExpressions(flowFile).getValue();
+        String errorDetails = context.getProperty(ERROR_DETAILS)
+                .evaluateAttributeExpressions(flowFile).getValue();
+        int retries = retries(context, flowFile);
+        long retryTimeout = context.getProperty(RETRY_TIMEOUT)
+                .evaluateAttributeExpressions(flowFile).asTimePeriod(TimeUnit.MILLISECONDS);
+        String variables = readVariables(session, flowFile,
+                context.getProperty(VARIABLES_FORMAT).asAllowableValue(VariablesFormat.class));
+        if (variables == null) {
+            service.handleFailure(taskId, errorMessage, errorDetails, retries, retryTimeout);
+        } else if (context.getProperty(LOCAL_VARIABLES).asBoolean()) {
+            service.handleFailure(taskId, errorMessage, errorDetails, retries, retryTimeout,
+                    null, variables);
+        } else {
+            service.handleFailure(taskId, errorMessage, errorDetails, retries, retryTimeout,
+                    variables, null);
+        }
     }
 
     private static int retries(ProcessContext context, FlowFile flowFile) {
@@ -109,6 +142,6 @@ public class HandleExternalTaskFailure extends AbstractExternalTaskProcessor {
         if (current != null && !current.isBlank()) {
             return Math.max(Integer.parseInt(current.trim()) - 1, 0);
         }
-        return context.getProperty(DEFAULT_RETRIES).asInteger();
+        return context.getProperty(DEFAULT_RETRIES).evaluateAttributeExpressions(flowFile).asInteger();
     }
 }

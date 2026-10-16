@@ -50,6 +50,14 @@ public class MockExternalTaskService extends AbstractControllerService
     }
 
     @Override
+    public List<ExternalTask> fetchAndLock(FetchAndLockQuery query) throws OperatonException {
+        record("fetchAndLockQuery", query);
+        List<ExternalTask> result = List.copyOf(tasks);
+        tasks.clear();
+        return result;
+    }
+
+    @Override
     public void complete(String taskId, String variablesJson, String localVariablesJson)
             throws OperatonException {
         record("complete", taskId, variablesJson, localVariablesJson);
@@ -59,6 +67,15 @@ public class MockExternalTaskService extends AbstractControllerService
     public void handleFailure(String taskId, String errorMessage, String errorDetails,
                               int retries, long retryTimeout) throws OperatonException {
         record("handleFailure", taskId, errorMessage, errorDetails, retries, retryTimeout);
+    }
+
+    @Override
+    public void handleFailure(String taskId, String errorMessage, String errorDetails,
+                              int retries, long retryTimeout,
+                              String variablesJson, String localVariablesJson)
+            throws OperatonException {
+        record("handleFailure", taskId, errorMessage, errorDetails, retries, retryTimeout,
+                variablesJson, localVariablesJson);
     }
 
     @Override
@@ -74,6 +91,6 @@ public class MockExternalTaskService extends AbstractControllerService
 
     @Override
     public void unlock(String taskId) throws OperatonException {
-        calls.add(new Call("unlock", List.of(taskId)));
+        record("unlock", taskId);
     }
 }

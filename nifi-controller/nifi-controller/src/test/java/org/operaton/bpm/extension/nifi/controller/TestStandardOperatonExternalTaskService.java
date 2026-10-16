@@ -219,6 +219,81 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
+    public void testBearerTokenAuthentication() throws Exception {
+        runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "my-jwt-token");
+        runner.enableControllerService(service);
+
+        service.extendLock("task-1", 1000);
+
+        assertEquals("Bearer my-jwt-token", lastRequest().authorization());
+    }
+
+    @Test
+    public void testFetchAndLockExtendedQuery() throws Exception {
+        runner.enableControllerService(service);
+        responseStatus = 200;
+        responseBody = """
+                [{"id": "task-2", "topicName": "orders", "workerId": "worker-1",
+                  "processDefinitionId": "pd-1", "processDefinitionKey": "order-process",
+                  "processDefinitionVersionTag": "v2", "createTime": "2026-10-16T08:00:00.000+0000",
+                  "errorMessage": "prev error", "errorDetails": "prev stack",
+                  "extensionProperties": {"retryPolicy": "exponential", "timeout": "30s"},
+                  "variables": {}}]
+                """;
+
+        OperatonExternalTaskService.FetchAndLockQuery query =
+                new OperatonExternalTaskService.FetchAndLockQuery(
+                        "orders", 5, 30000L, List.of("orderId"), 2000L,
+                        false, true, false, true,
+                        "bk-42", "pd-1", List.of("pd-1", "pd-2"),
+                        "order-process", List.of("order-process"), "v2",
+                        true, List.of("tenant-a"),
+                        "{\"status\": {\"type\": \"String\", \"value\": \"NEW\"}}");
+
+        List<ExternalTask> tasks = service.fetchAndLock(query);
+
+        assertEquals(1, tasks.size());
+        ExternalTask task = tasks.get(0);
+        assertEquals("task-2", task.id());
+        assertEquals("v2", task.processDefinitionVersionTag());
+        assertEquals("2026-10-16T08:00:00.000+0000", task.createTime());
+        assertEquals("prev error", task.errorMessage());
+        assertEquals("prev stack", task.errorDetails());
+        assertEquals("exponential", task.extensionProperties().get("retryPolicy"));
+        assertEquals("30s", task.extensionProperties().get("timeout"));
+
+        JsonNode body = lastRequest().body();
+        assertEquals(false, body.get("usePriority").asBoolean());
+        JsonNode topic = body.at("/topics/0");
+        assertEquals(true, topic.get("localVariables").asBoolean());
+        assertEquals(false, topic.get("deserializeValues").asBoolean());
+        assertEquals(true, topic.get("includeExtensionProperties").asBoolean());
+        assertEquals("bk-42", topic.get("businessKey").asText());
+        assertEquals("pd-1", topic.get("processDefinitionId").asText());
+        assertEquals("pd-2", topic.at("/processDefinitionIdIn/1").asText());
+        assertEquals("order-process", topic.get("processDefinitionKey").asText());
+        assertEquals("order-process", topic.at("/processDefinitionKeyIn/0").asText());
+        assertEquals("v2", topic.get("processDefinitionVersionTag").asText());
+        assertEquals(true, topic.get("withoutTenantId").asBoolean());
+        assertEquals("tenant-a", topic.at("/tenantIdIn/0").asText());
+        assertEquals("NEW", topic.at("/processVariables/status/value").asText());
+    }
+
+    @Test
+    public void testHandleFailureWithVariables() throws Exception {
+        runner.enableControllerService(service);
+
+        service.handleFailure("task-1", "boom", "stack", 2, 5000,
+                "{\"v\": {\"type\": \"String\", \"value\": \"p\"}}",
+                "{\"lv\": {\"type\": \"Integer\", \"value\": 9}}");
+
+        Request request = lastRequest();
+        assertEquals("/engine-rest/external-task/task-1/failure", request.path());
+        assertEquals("p", request.body().at("/variables/v/value").asText());
+        assertEquals(9, request.body().at("/localVariables/lv/value").asInt());
+    }
+
+    @Test
     public void testErrorResponse() throws Exception {
         runner.enableControllerService(service);
         responseStatus = 404;

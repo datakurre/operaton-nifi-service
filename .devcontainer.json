@@ -3,14 +3,21 @@
   "image": "ghcr.io/cachix/devenv/devcontainer:latest",
   "overrideCommand": false,
   "postCreateCommand": "direnv allow",
-  "updateContentCommand": "devenv shell -- true",
+  "updateContentCommand": "devenv shell -- build",
   "customizations": {
     "vscode": {
+      "settings": {
+        "bpmnModeler.engineRestUrl": "http://localhost:8080/engine-rest"
+      },
       "extensions": [
         "bbenoist.Nix",
         "mkhl.direnv",
+        "datakurre.devenv",
         "vscjava.vscode-java-pack",
         "redhat.vscode-xml",
+        "datakurre.vscode-operaton-bpmn-js-modeler",
+        "datakurre.vscode-operaton-dmn-js-modeler",
+        "datakurre.vscode-operaton-form-js-modeler",
         "GitHub.copilot",
         "GitHub.copilot-chat"
       ]

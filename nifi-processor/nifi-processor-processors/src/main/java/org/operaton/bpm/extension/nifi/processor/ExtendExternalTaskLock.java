@@ -11,6 +11,7 @@ import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
@@ -21,7 +22,7 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 @CapabilityDescription("Extends the lock of a locked Operaton external task, e.g. before a "
         + "long running step of the flow.")
-@SeeAlso({FetchAndLockExternalTasks.class})
+@SeeAlso({FetchAndLockExternalTasks.class, UnlockExternalTask.class})
 @ReadsAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id (default)")
 @WritesAttributes({
         @WritesAttribute(attribute = ExternalTaskAttributes.ERROR_STATUS,
@@ -36,6 +37,7 @@ public class ExtendExternalTaskLock extends AbstractExternalTaskProcessor {
             .description("New lock duration, counted from now")
             .required(true)
             .defaultValue("5 min")
+            .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
             .build();
 
@@ -49,6 +51,7 @@ public class ExtendExternalTaskLock extends AbstractExternalTaskProcessor {
     @Override
     protected void handle(ProcessContext context, ProcessSession session, FlowFile flowFile,
                           OperatonExternalTaskService service, String taskId) throws Exception {
-        service.extendLock(taskId, context.getProperty(LOCK_DURATION).asTimePeriod(TimeUnit.MILLISECONDS));
+        service.extendLock(taskId, context.getProperty(LOCK_DURATION)
+                .evaluateAttributeExpressions(flowFile).asTimePeriod(TimeUnit.MILLISECONDS));
     }
 }
