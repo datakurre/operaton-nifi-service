@@ -28,8 +28,7 @@ Log In To Operaton
 Navigate To Process In Cockpit
     [Arguments]    ${process_key}
     [Documentation]    Navigates to the process definition view in Operaton Cockpit.
-    Go To    ${OPERATON_URL}/app/cockpit/default/#/process-definition/${process_key}
-    Wait Until Visible    .diagram-holder
+    Navigate To Process Definition In Cockpit    ${process_key}
     Activate Cockpit Flow And Auto Refresh
 
 Navigate To History In Cockpit
@@ -107,6 +106,15 @@ Highlight NiFi Processor
     [Arguments]    ${processor_name}
     [Documentation]    Selects and highlights a processor on the NiFi canvas.
     Highlight Canvas Processor    ${processor_name}
+
+Zoom To NiFi Processor
+    [Arguments]    ${processor_name}    ${scale}=0.85
+    [Documentation]    Smoothly zooms and centers the NiFi canvas on a processor.
+    Zoom To Canvas Processor    ${processor_name}    ${scale}
+
+Reset NiFi Zoom
+    [Documentation]    Resets the NiFi canvas zoom to show the full pipeline.
+    Reset NiFi Canvas Zoom
 
 Show Step
     [Arguments]    ${text}    ${tag}=OPERATON    ${duration}=4.0

@@ -151,7 +151,48 @@ class OperatonNiFiLibrary:
             if box:
                 page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=10)
                 proc_text.click(force=True)
-                page.wait_for_timeout(700)
+    @keyword
+    def zoom_to_canvas_processor(self, name, scale=0.85):
+        """Smoothly zooms and centers NiFi canvas on a specific processor, then selects it."""
+        page = self._get_page()
+        page.evaluate("""(data) => {
+            const proc = Array.from(document.querySelectorAll("g.processor")).find(g => {
+                const nameEl = g.querySelector("text.processor-name");
+                return nameEl && nameEl.textContent.includes(data.name);
+            });
+            if (!proc) return;
+            const match = proc.getAttribute("transform").match(/translate\\(([-\\d.]+),\\s*([-\\d.]+)\\)/);
+            if (!match) return;
+            const px = parseFloat(match[1]);
+            const py = parseFloat(match[2]);
+            const s = parseFloat(data.scale);
+            const cx = px + 176;
+            const cy = py + 65;
+            const tx = 960 - (cx * s);
+            const ty = 500 - (cy * s);
+            const canvas = document.querySelector("#canvas");
+            canvas.style.transition = "transform 0.4s ease-out";
+            canvas.setAttribute("transform", "translate(" + tx + "," + ty + ") scale(" + s + ")");
+        }""", {"name": name, "scale": scale})
+        page.wait_for_timeout(450)
+        proc_text = page.locator(f'text.processor-name:has-text("{name}")').first
+        if proc_text.is_visible():
+            box = proc_text.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+                proc_text.click(force=True)
+                page.wait_for_timeout(600)
+
+    @keyword
+    def reset_nifi_canvas_zoom(self):
+        """Resets NiFi canvas zoom to show the full pipeline."""
+        page = self._get_page()
+        page.evaluate("""() => {
+            const canvas = document.querySelector("#canvas");
+            canvas.style.transition = "transform 0.45s ease-out";
+            canvas.setAttribute("transform", "translate(-16.67, 4.17) scale(0.52)");
+        }""")
+        page.wait_for_timeout(500)
 
     @keyword
     def configure_operaton_local_storage(self):
@@ -250,6 +291,23 @@ class OperatonNiFiLibrary:
             if not data:
                 raise RuntimeError(f"No history instance found for business key {business_key}")
             return data[0]["id"]
+
+    @keyword
+    def navigate_to_process_definition_in_cockpit(self, process_key):
+        """Navigates to the process definition diagram in Operaton Cockpit by querying its ID."""
+        auth = base64.b64encode(b"admin:admin").decode("ascii")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:8080/engine-rest/process-definition/key/{process_key}",
+            headers={"Authorization": f"Basic {auth}"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            def_id = data["id"]
+        
+        page = self._get_page()
+        page.goto(f"http://127.0.0.1:8080/operaton/app/cockpit/default/#/process-definition/{def_id}")
+        page.wait_for_selector(".diagram-holder", timeout=10000)
+        page.wait_for_timeout(1000)
 
     @keyword
     def prepare_travel_planner_state(self):
