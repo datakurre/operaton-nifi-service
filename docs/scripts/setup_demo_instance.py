@@ -26,11 +26,23 @@ from devenv.scripts.preconfigure import (  # noqa: E402
 
 OPERATON_REST = os.environ.get("OPERATON_REST_URL", "http://127.0.0.1:8080/engine-rest")
 NIFI_ADDR = os.environ.get("NIFI_ADDR", "http://127.0.0.1:8081")
+OPERATON_USER = os.environ.get("OPERATON_ADMIN_USER_ID", "demo")
+OPERATON_PASS = os.environ.get("OPERATON_ADMIN_USER_PASSWORD", "demo")
+
+
+def get_operaton_headers():
+    auth = base64.b64encode(f"{OPERATON_USER}:{OPERATON_PASS}".encode("ascii")).decode("ascii")
+    headers = {"Authorization": f"Basic {auth}"}
+    try:
+        request(f"{OPERATON_REST}/version", headers=headers)
+        return headers
+    except Exception:
+        fallback_auth = base64.b64encode(b"admin:admin").decode("ascii")
+        return {"Authorization": f"Basic {fallback_auth}"}
 
 
 def reset_operaton_and_nifi():
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
-    headers = {"Authorization": f"Basic {auth}"}
+    headers = get_operaton_headers()
     instances = (
         request(f"{OPERATON_REST}/process-instance?processDefinitionKey=demo-process", headers=headers)
         or []

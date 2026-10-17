@@ -6,8 +6,8 @@ Library           OperatonNiFiLibrary.py
 ${OPERATON_URL}       http://127.0.0.1:8080/operaton
 ${OPERATON_REST}      http://127.0.0.1:8080/engine-rest
 ${NIFI_URL}           http://127.0.0.1:8081/nifi
-${DEFAULT_USER}       admin
-${DEFAULT_PASSWORD}   admin
+${DEFAULT_USER}       demo
+${DEFAULT_PASSWORD}   demo
 
 *** Keywords ***
 Reset Demo State

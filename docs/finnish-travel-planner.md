@@ -179,7 +179,7 @@ The process reaches `UserTask_CurateTrip`. In Operaton Tasklist, the traveler in
 ### 1. Ensure Services are Running
 ```bash
 # Check Operaton BPM (http://127.0.0.1:8080)
-curl -u admin:admin http://127.0.0.1:8080/engine-rest/version
+curl -u demo:demo http://127.0.0.1:8080/engine-rest/version
 
 # Check Apache NiFi (http://127.0.0.1:8081/nifi/)
 curl http://127.0.0.1:8081/nifi-api/flow/cluster/summary

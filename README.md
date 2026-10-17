@@ -161,7 +161,7 @@ devenv up
 ```
 
 Services started:
-- **Operaton BPM**: http://127.0.0.1:8080 (REST API at `/engine-rest` with Basic Auth enabled, Webapps at `/operaton/`, credentials: `admin` / `admin`, auto-deploys `deployment/demo-process.bpmn`)
+- **Operaton BPM**: http://127.0.0.1:8080 (REST API at `/engine-rest` with Basic Auth enabled, Webapps at `/operaton/`, credentials: `demo` / `demo`, auto-deploys `deployment/demo-process.bpmn`)
 - **Apache NiFi**: http://127.0.0.1:8081/nifi/ (Plain HTTP, no authentication)
 - **HashiCorp Vault**: http://127.0.0.1:8200 (Web UI enabled, unsealed automatically, token stored in `.devenv/state/env_file`)
 - **Preconfiguration**: Automatically provisions Vault KV secrets (`secret/operaton`), synchronizes `HashiCorpVaultParameterProvider` into Parameter Context `operaton`, configures and enables `StandardOperatonExternalTaskService` using Vault parameters (`#{url}`, `#{worker_id}`, `#{username}`, `#{password}`), provisions a 3-column processing pipeline on the NiFi canvas exercising all processor types, and seeds 5 realistic order instances (`ORD-1000` to `ORD-1004`) across all lifecycle states (active validation, fraud check, human task review, and incident handling).

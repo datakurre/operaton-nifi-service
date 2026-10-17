@@ -20,7 +20,20 @@ import uuid
 OPERATON_REST = os.environ.get("OPERATON_REST_URL", "http://127.0.0.1:8080/engine-rest")
 NIFI_ADDR = os.environ.get("NIFI_ADDR", "http://127.0.0.1:8081")
 MAILPIT_URL = os.environ.get("MAILPIT_URL", "http://127.0.0.1:8025")
+OPERATON_USER = os.environ.get("OPERATON_ADMIN_USER_ID", "demo")
+OPERATON_PASS = os.environ.get("OPERATON_ADMIN_USER_PASSWORD", "demo")
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def get_operaton_headers():
+    auth = base64.b64encode(f"{OPERATON_USER}:{OPERATON_PASS}".encode("ascii")).decode("ascii")
+    headers = {"Authorization": f"Basic {auth}"}
+    try:
+        request(f"{OPERATON_REST}/version", headers=headers)
+        return headers
+    except Exception:
+        fallback_auth = base64.b64encode(b"admin:admin").decode("ascii")
+        return {"Authorization": f"Basic {fallback_auth}"}
 
 
 def request(url, data=None, headers=None, method=None):
@@ -81,8 +94,7 @@ def ensure_mailpit():
 def clear_operaton_instances():
     """Wipes all running and historical process instances from Operaton so cockpit/tasklist starts completely clean."""
     print("Clearing all Operaton runtime and historical process instances...")
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
-    headers = {"Authorization": f"Basic {auth}"}
+    headers = get_operaton_headers()
 
     # 1. Delete all runtime process instances
     try:
@@ -122,8 +134,7 @@ def clear_operaton_instances():
 
 def deploy_bpmn():
     print("Deploying finnish-travel-planner.bpmn to Operaton...")
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
-    headers = {"Authorization": f"Basic {auth}"}
+    headers = get_operaton_headers()
     bpmn_path = os.path.join(ROOT_DIR, "deployment", "finnish-travel-planner.bpmn")
     with open(bpmn_path, "rb") as f:
         bpmn_bytes = f.read()
@@ -141,10 +152,8 @@ def deploy_bpmn():
         f"Content-Type: application/octet-stream\r\n\r\n"
     ).encode("utf-8") + bpmn_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
 
-    deploy_headers = {
-        "Authorization": f"Basic {auth}",
-        "Content-Type": f"multipart/form-data; boundary={boundary}",
-    }
+    deploy_headers = dict(headers)
+    deploy_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
     res = request(f"{OPERATON_REST}/deployment/create", data=body, headers=deploy_headers, method="POST")
     print("Successfully deployed finnish-travel-planner.bpmn to Operaton.")
     return res
@@ -768,8 +777,7 @@ def configure_nifi():
 
 def run_test_instance(preset="koli", custom_city=""):
     print(f"\n--- Running Live Test Instance for preset: {preset} (custom_city: {custom_city}) ---")
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
-    headers = {"Authorization": f"Basic {auth}"}
+    headers = get_operaton_headers()
 
     # 1. Start process instance
     biz_key = f"TRIP-{(custom_city or preset).upper()}-{int(time.time())}"

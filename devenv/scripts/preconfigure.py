@@ -7,6 +7,9 @@ import urllib.error
 import urllib.request
 import uuid
 
+OPERATON_USER = os.environ.get("OPERATON_ADMIN_USER_ID", os.environ.get("OPERATON_USERNAME", "demo"))
+OPERATON_PASS = os.environ.get("OPERATON_ADMIN_USER_PASSWORD", os.environ.get("OPERATON_PASSWORD", "demo"))
+
 
 def request(url, data=None, headers=None, method=None):
     if headers is None:
@@ -92,8 +95,8 @@ def configure_vault(vault_addr, state_dir, operaton_url="http://localhost:8080/e
                 "data": {
                     "url": operaton_url,
                     "worker_id": "nifi-worker",
-                    "username": "admin",
-                    "password": "admin",
+                    "username": OPERATON_USER,
+                    "password": OPERATON_PASS,
                 }
             },
             headers=headers,
@@ -108,7 +111,7 @@ def configure_vault(vault_addr, state_dir, operaton_url="http://localhost:8080/e
 
 def wait_for_operaton(operaton_url):
     print("Waiting for Operaton REST API to be ready...")
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
+    auth = base64.b64encode(f"{OPERATON_USER}:{OPERATON_PASS}".encode("ascii")).decode("ascii")
     headers = {"Authorization": f"Basic {auth}"}
     while True:
         try:
@@ -117,7 +120,14 @@ def wait_for_operaton(operaton_url):
                 print(f"Operaton {ver['version']} is ready.")
                 break
         except Exception:
-            pass
+            try:
+                fallback_auth = base64.b64encode(b"admin:admin").decode("ascii")
+                ver = request(f"{operaton_url}/version", headers={"Authorization": f"Basic {fallback_auth}"})
+                if ver and "version" in ver:
+                    print(f"Operaton {ver['version']} is ready.")
+                    break
+            except Exception:
+                pass
         time.sleep(2)
 
 
@@ -145,7 +155,7 @@ def _fetch_and_lock_by_business_key(operaton_url, headers, topic, business_key, 
 
 def configure_operaton(operaton_url, devenv_root):
     print("Configuring Operaton demo deployment and multi-stage process instances...")
-    auth = base64.b64encode(b"admin:admin").decode("ascii")
+    auth = base64.b64encode(f"{OPERATON_USER}:{OPERATON_PASS}".encode("ascii")).decode("ascii")
     headers = {"Authorization": f"Basic {auth}"}
 
     bpmn_path = os.path.join(devenv_root, "deployment", "demo-process.bpmn")
@@ -976,8 +986,8 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
         else {
             "Operaton REST URL": operaton_url,
             "Worker ID": "nifi-worker",
-            "Username": "admin",
-            "Password": "admin",
+            "Username": OPERATON_USER,
+            "Password": OPERATON_PASS,
         }
     )
 

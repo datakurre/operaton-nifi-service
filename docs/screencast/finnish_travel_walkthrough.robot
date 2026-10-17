@@ -18,7 +18,7 @@ Walkthrough BPMN Process In Cockpit
     Chapter    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 1
     ...    title=Finnish Travel & Outdoor Adventure Planner
     ...    subtitle=BPMN 2.0 orchestration model & boundary error handling
-    Log In To Operaton    admin    admin
+    Log In To Operaton
     Navigate To Process In Cockpit    finnish-travel-planner
     Show Step    Operaton Cockpit: BPMN 2.0 orchestration model for Finnish adventure planning    OPERATON
     Highlight Bpmn Activity    StartEvent_1

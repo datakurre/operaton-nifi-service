@@ -264,45 +264,49 @@ class OperatonNiFiLibrary:
         stop_btn.click(force=True)
         page.wait_for_timeout(700)
 
+    def _make_operaton_request(self, url):
+        operaton_user = os.environ.get("OPERATON_ADMIN_USER_ID", "demo")
+        operaton_pass = os.environ.get("OPERATON_ADMIN_USER_PASSWORD", "demo")
+        auth = base64.b64encode(f"{operaton_user}:{operaton_pass}".encode("ascii")).decode("ascii")
+        req = urllib.request.Request(url, headers={"Authorization": f"Basic {auth}"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                fallback_auth = base64.b64encode(b"admin:admin").decode("ascii")
+                req2 = urllib.request.Request(url, headers={"Authorization": f"Basic {fallback_auth}"})
+                with urllib.request.urlopen(req2, timeout=10) as resp2:
+                    return json.loads(resp2.read().decode())
+            raise
+
     @keyword
     def get_operaton_instance_id_by_key(self, business_key):
         """Fetches the process instance ID for a given business key via REST."""
-        auth = base64.b64encode(b"admin:admin").decode("ascii")
-        req = urllib.request.Request(
-            f"http://127.0.0.1:8080/engine-rest/process-instance?businessKey={business_key}",
-            headers={"Authorization": f"Basic {auth}"}
+        data = self._make_operaton_request(
+            f"http://127.0.0.1:8080/engine-rest/process-instance?businessKey={business_key}"
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            if not data:
-                raise RuntimeError(f"No instance found for business key {business_key}")
-            return data[0]["id"]
+        if not data:
+            raise RuntimeError(f"No instance found for business key {business_key}")
+        return data[0]["id"]
 
     @keyword
     def get_operaton_history_instance_id_by_key(self, business_key):
         """Fetches the latest historical process instance ID for a given business key via REST."""
-        auth = base64.b64encode(b"admin:admin").decode("ascii")
-        req = urllib.request.Request(
-            f"http://127.0.0.1:8080/engine-rest/history/process-instance?processInstanceBusinessKey={business_key}&sortBy=startTime&sortOrder=desc",
-            headers={"Authorization": f"Basic {auth}"}
+        data = self._make_operaton_request(
+            f"http://127.0.0.1:8080/engine-rest/history/process-instance?processInstanceBusinessKey={business_key}&sortBy=startTime&sortOrder=desc"
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            if not data:
-                raise RuntimeError(f"No history instance found for business key {business_key}")
-            return data[0]["id"]
+        if not data:
+            raise RuntimeError(f"No history instance found for business key {business_key}")
+        return data[0]["id"]
 
     @keyword
     def navigate_to_process_definition_in_cockpit(self, process_key):
         """Navigates to the process definition diagram in Operaton Cockpit by querying its ID."""
-        auth = base64.b64encode(b"admin:admin").decode("ascii")
-        req = urllib.request.Request(
-            f"http://127.0.0.1:8080/engine-rest/process-definition/key/{process_key}",
-            headers={"Authorization": f"Basic {auth}"}
+        data = self._make_operaton_request(
+            f"http://127.0.0.1:8080/engine-rest/process-definition/key/{process_key}"
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            def_id = data["id"]
+        def_id = data["id"]
         
         page = self._get_page()
         page.goto(f"http://127.0.0.1:8080/operaton/app/cockpit/default/#/process-definition/{def_id}")
