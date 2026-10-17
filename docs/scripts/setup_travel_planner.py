@@ -78,6 +78,48 @@ def ensure_mailpit():
     print("Warning: Mailpit check timed out.")
 
 
+def clear_operaton_instances():
+    """Wipes all running and historical process instances from Operaton so cockpit/tasklist starts completely clean."""
+    print("Clearing all Operaton runtime and historical process instances...")
+    auth = base64.b64encode(b"admin:admin").decode("ascii")
+    headers = {"Authorization": f"Basic {auth}"}
+
+    # 1. Delete all runtime process instances
+    try:
+        instances = request(f"{OPERATON_REST}/process-instance", headers=headers)
+        if instances and isinstance(instances, list):
+            for inst in instances:
+                inst_id = inst["id"]
+                try:
+                    request(f"{OPERATON_REST}/process-instance/{inst_id}?skipCustomListeners=true&skipIoMappings=true", headers=headers, method="DELETE")
+                except Exception as e:
+                    print(f"Warning deleting runtime instance {inst_id}: {e}")
+            print(f"Deleted {len(instances)} runtime instances.")
+    except Exception as e:
+        print(f"Error querying runtime instances: {e}")
+
+    # 2. Delete all historical process instances
+    try:
+        hist_instances = request(f"{OPERATON_REST}/history/process-instance", headers=headers)
+        if hist_instances and isinstance(hist_instances, list):
+            for hinst in hist_instances:
+                hinst_id = hinst["id"]
+                try:
+                    request(f"{OPERATON_REST}/history/process-instance/{hinst_id}", headers=headers, method="DELETE")
+                except Exception as e:
+                    print(f"Warning deleting history instance {hinst_id}: {e}")
+            print(f"Deleted {len(hist_instances)} historical instances.")
+    except Exception as e:
+        print(f"Error querying historical instances: {e}")
+
+    # 3. Clean Mailpit messages if running
+    try:
+        request(f"{MAILPIT_URL}/api/v1/messages", method="DELETE")
+        print("Cleared Mailpit inbox.")
+    except Exception:
+        pass
+
+
 def deploy_bpmn():
     print("Deploying finnish-travel-planner.bpmn to Operaton...")
     auth = base64.b64encode(b"admin:admin").decode("ascii")
@@ -852,9 +894,12 @@ def main():
     parser.add_argument("--test", action="store_true", help="Run end-to-end test instance after setup")
     parser.add_argument("--preset", default="koli", choices=["koli", "tampere", "rovaniemi", "nuuksio"])
     parser.add_argument("--custom", default="", help="Custom city name to test (e.g. invalid city for BPMN error)")
+    parser.add_argument("--keep-db", action="store_true", help="Keep existing Operaton instances instead of clearing")
     args = parser.parse_args()
 
     ensure_mailpit()
+    if not args.keep_db:
+        clear_operaton_instances()
     deploy_bpmn()
     configure_nifi()
     if args.test:
