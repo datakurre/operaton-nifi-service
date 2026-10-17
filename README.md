@@ -1,5 +1,7 @@
 # Operaton NiFi External Task Worker
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
+
 Apache NiFi 2.x extensions for working on [Operaton](https://operaton.org)
 external tasks, plus a devenv module for running NiFi locally with Operaton BPM and HashiCorp Vault.
 
@@ -149,6 +151,8 @@ Variables in FlowFile content are either:
 4. **`StandardOperatonExternalTaskService`**: References `#{url}`, `#{worker_id}`, `#{username}`, and `#{password}` from the bound `operaton` Parameter Context.
 
 ## Order Fulfillment Demo & Local Development
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
 
 The repository includes a comprehensive, multi-stage Order Fulfillment demo process in `deployment/demo-process.bpmn` (`demo-process` v2.0), featuring automated validation, high-value decision gateways, fraud detection boundary events, human-in-the-loop manual review, and payment/shipment fulfillment.
 

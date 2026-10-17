@@ -1,5 +1,7 @@
 # Order Fulfillment: End-to-End BPMN & NiFi Orchestration
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
+
 This guide walks through the ambitious **Order Fulfillment** sample application included in this repository. It showcases how [Operaton BPM](https://operaton.org) and [Apache NiFi 2.x](https://nifi.apache.org) combine to form a resilient, enterprise-grade orchestration pipeline secured by [HashiCorp Vault](https://www.vaultproject.io/).
 
 ---

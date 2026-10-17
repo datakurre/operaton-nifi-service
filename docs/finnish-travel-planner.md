@@ -1,5 +1,7 @@
 # 🌲 Finnish Travel & Outdoor Adventure Planner
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
+
 The **Finnish Travel & Outdoor Adventure Planner** is a demonstration of human-in-the-loop workflow orchestration pairing **Operaton BPMN** with **Apache NiFi 2.4.0**, deterministic public open APIs, and zero heavy AI / zero LLMs.
 
 Unlike complex synthetic enterprise scenarios, this flow solves an everyday problem: helping a traveler plan an outdoor excursion to iconic Finnish destinations—such as **Koli National Park**, **Tampere (the Sauna Capital)**, **Rovaniemi & Lapland**, or **Nuuksio National Park**—combining live meteorological data, cultural dossiers, human preferences in Operaton Tasklist, regional lunch/dinner spotlights, and local email delivery via Mailpit.
