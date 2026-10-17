@@ -14,3 +14,4 @@ target/
 site/
 docs/screencast/*.png
 scratch/
+deployment/itineraries/*.md

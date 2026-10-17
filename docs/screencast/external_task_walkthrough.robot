@@ -46,6 +46,7 @@ Process Order In Apache NiFi
     ...    subtitle=Fetching, locking, validating, and completing external task ORD-1001
     ...    anonymous=${True}
     Go To    ${NIFI_URL}/
+    Focus    actor    solo=${True}
     Wait Until Visible    \#canvas
     Show Step    Apache NiFi canvas: 3-column pipeline with Operaton External Task processors    APACHE NIFI
     Show Step    Locks are extended automatically by the External Task Service while the flow runs    APACHE NIFI
@@ -63,7 +64,7 @@ Process Order In Apache NiFi
     Start NiFi Processor    CompleteExternalTask
     Subtle Cursor Glide    1.0
     # Context switch: Focus observer where the action is (Operaton advances token live)
-    Focus    observer
+    Focus    observer    solo=${True}
     Show Step    Auto-refresh in Operaton: external task completes and token advances live!    OPERATON
     Refresh Cockpit View
     Show Step    Order amount (€149.99) < €500: token routes past gateway directly to Payment    OPERATON
@@ -71,7 +72,7 @@ Process Order In Apache NiFi
     Inspect Variable In Cockpit    validation.status
     Inspect Variable In Cockpit    validation.worker
     # Context switch back: return focus to NiFi canvas to execute downstream payment & shipment
-    Focus    actor
+    Focus    actor    solo=${True}
     Pan NiFi Canvas    -850    0
     Show Step    Starting downstream fulfillment processors: Payment & Shipment tasks    APACHE NIFI
     Start NiFi Processor    Fetch Payment Tasks
@@ -80,7 +81,7 @@ Process Order In Apache NiFi
     Inspect Queue    Fetch Payment Tasks
     Subtle Cursor Glide    1.0
     # Context switch to observer for live fulfillment completion
-    Focus    observer
+    Focus    observer    solo=${True}
     Show Step    Downstream tasks completed: payment charged and shipment dispatched live!    OPERATON
     Refresh Cockpit View
     Subtle Cursor Glide    1.5

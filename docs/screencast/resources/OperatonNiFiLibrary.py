@@ -248,3 +248,187 @@ class OperatonNiFiLibrary:
             if not data:
                 raise RuntimeError(f"No history instance found for business key {business_key}")
             return data[0]["id"]
+
+    @keyword
+    def prepare_travel_planner_state(self):
+        """Ensures Mailpit, BPMN deployment, and NiFi flow are ready for travel planner."""
+        subprocess.run(["python3", "docs/scripts/setup_travel_planner.py"], check=True)
+
+    @keyword
+    def get_travel_planner_group_id(self):
+        """Fetches process group ID for 'Finnish Travel Planner' in NiFi."""
+        req = urllib.request.Request("http://127.0.0.1:8081/nifi-api/flow/process-groups/root")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            root = json.loads(resp.read().decode())
+            for pg in root["processGroupFlow"]["flow"]["processGroups"]:
+                if pg["component"]["name"] == "Finnish Travel Planner":
+                    return pg["component"]["id"]
+            raise RuntimeError("Finnish Travel Planner process group not found")
+
+    @keyword
+    def log_in_to_operaton_tasklist(self, username="admin", password="admin"):
+        """Logs into Operaton Tasklist."""
+        page = self._get_page()
+        page.goto("http://127.0.0.1:8080/operaton/app/tasklist/default/#/login")
+        user_input = page.locator('input[ng-model="username"]')
+        user_input.wait_for(state="visible", timeout=10000)
+        box = user_input.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=6)
+        user_input.fill(username)
+        page.wait_for_timeout(300)
+        pass_input = page.locator('input[ng-model="password"]')
+        box = pass_input.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=6)
+        pass_input.fill(password)
+        page.wait_for_timeout(300)
+        btn = page.locator('button[type="submit"]')
+        box = btn.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=6)
+        btn.click()
+        page.wait_for_timeout(1000)
+
+    @keyword
+    def start_process_in_tasklist(self, preset="koli"):
+        """Opens Start Process modal in Tasklist, selects preset, and starts instance."""
+        page = self._get_page()
+        # Click "Start process"
+        start_btn = page.locator('a:has-text("Start process"), button:has-text("Start process"), [ng-click*="startProcess"]').first
+        start_btn.wait_for(state="visible", timeout=10000)
+        box = start_btn.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        start_btn.click()
+        page.wait_for_timeout(800)
+
+        # Click Finnish Travel & Outdoor Adventure Planner
+        proc_link = page.locator('a:has-text("Finnish Travel & Outdoor Adventure Planner")').first
+        proc_link.wait_for(state="visible", timeout=10000)
+        box = proc_link.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        proc_link.click()
+        page.wait_for_timeout(800)
+
+        # Select preset
+        preset_select = page.locator('select[cam-variable-name="presetDestination"], select[name="presetDestination"]').first
+        if preset_select.is_visible():
+            box = preset_select.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+            preset_select.select_option(preset)
+            page.wait_for_timeout(600)
+
+        # Click Start in modal footer
+        start_instance_btn = page.locator('.modal-footer button:has-text("Start")').first
+        box = start_instance_btn.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        start_instance_btn.click()
+        page.wait_for_timeout(1500)
+
+    @keyword
+    def open_and_claim_curation_task(self):
+        """Selects and claims the Curate Trip user task in Tasklist."""
+        page = self._get_page()
+        task_link = None
+        for _ in range(45):
+            candidate = page.locator('a:has-text("Curate Trip")').first
+            if candidate.is_visible():
+                task_link = candidate
+                break
+            refresh_btn = page.locator('button:has(.glyphicon-repeat), a:has-text("All tasks"), [ng-click*="updateList"]').first
+            if refresh_btn.is_visible():
+                refresh_btn.click()
+            page.wait_for_timeout(1000)
+
+        if not task_link:
+            raise RuntimeError("Curate Trip task link not found in Tasklist")
+
+        box = task_link.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        task_link.click()
+        page.wait_for_timeout(1000)
+
+        # Claim if available
+        claim_btn = page.locator('a:has-text("Claim"), button:has-text("Claim")').first
+        if claim_btn.is_visible():
+            box = claim_btn.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=6)
+            claim_btn.click()
+            page.wait_for_timeout(800)
+
+    @keyword
+    def fill_curation_choices_and_submit(self):
+        """Fills curation form choices (Season, Stay, Dining) and clicks Complete."""
+        page = self._get_page()
+        # Form field hovers to display live values
+        temp_input = page.locator('input[cam-variable-name="currentTemp"], input[name="currentTemp"]').first
+        if temp_input.is_visible():
+            box = temp_input.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+                page.wait_for_timeout(600)
+
+        # Select Stay Style (Lakeside Mökki)
+        stay_select = page.locator('select[cam-variable-name="stayStyle"], select[name="stayStyle"]').first
+        if stay_select.is_visible():
+            box = stay_select.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+            stay_select.select_option("mökki")
+            page.wait_for_timeout(500)
+
+        # Select Dining Style (Campfire Cooking)
+        dining_select = page.locator('select[cam-variable-name="diningStyle"], select[name="diningStyle"]').first
+        if dining_select.is_visible():
+            box = dining_select.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+            dining_select.select_option("campfire")
+            page.wait_for_timeout(500)
+
+        # Check confirmTrip if present
+        confirm_cb = page.locator('input[type="checkbox"][cam-variable-name="confirmTrip"], input[type="checkbox"][name="confirmTrip"]').first
+        if confirm_cb.is_visible():
+            if not confirm_cb.is_checked():
+                confirm_cb.click()
+                page.wait_for_timeout(300)
+
+        # Click Complete
+        complete_btn = page.locator('button:has-text("Complete"), button[ng-click*="complete"]').first
+        box = complete_btn.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        complete_btn.click()
+        page.wait_for_timeout(2000)
+
+    @keyword
+    def open_mailpit_and_view_itinerary(self):
+        """Navigates to Mailpit web UI and views the delivered adventure guide."""
+        page = self._get_page()
+        page.goto("http://127.0.0.1:8025")
+        page.wait_for_timeout(1000)
+        msg_row = None
+        for _ in range(25):
+            candidate = page.get_by_text("Finnish Adventure Guide").first
+            if candidate.is_visible():
+                msg_row = candidate
+                break
+            page.wait_for_timeout(1000)
+
+        if not msg_row:
+            raise RuntimeError("Itinerary message not found in Mailpit UI")
+
+        box = msg_row.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=8)
+        msg_row.click()
+        page.wait_for_timeout(1200)
+        # Scroll down slightly inside message preview to view itinerary details
+        page.mouse.wheel(0, 300)
+        page.wait_for_timeout(1500)

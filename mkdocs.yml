@@ -54,3 +54,4 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Order Fulfillment Demo: order-fulfillment.md
+  - Finnish Travel Planner: finnish-travel-planner.md

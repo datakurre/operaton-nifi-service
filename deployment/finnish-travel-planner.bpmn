@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_FinnishTravelPlanner"
+                  targetNamespace="http://operaton.org/schema/bpmn/travel-planner">
+
+  <bpmn:error id="Error_UNKNOWN_DESTINATION" name="UnknownDestination" errorCode="UNKNOWN_DESTINATION" />
+
+  <bpmn:process id="finnish-travel-planner" name="Finnish Travel &amp; Outdoor Adventure Planner" isExecutable="true" camunda:historyTimeToLive="180" camunda:versionTag="1.0">
+    
+    <!-- Start Event with Presets -->
+    <bpmn:startEvent id="StartEvent_1" name="Plan Finnish Adventure">
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="presetDestination" label="Choose Destination Preset" type="enum" defaultValue="koli">
+            <camunda:value id="koli" name="Koli National Park (North Karelia)" />
+            <camunda:value id="tampere" name="Tampere (Sauna Capital)" />
+            <camunda:value id="rovaniemi" name="Rovaniemi &amp; Lapland (Arctic Nature)" />
+            <camunda:value id="nuuksio" name="Nuuksio National Park (Espoo/Helsinki)" />
+            <camunda:value id="custom" name="Custom Destination" />
+          </camunda:formField>
+          <camunda:formField id="customCity" label="Custom City / Park (if Custom selected)" type="string" defaultValue="" />
+          <camunda:formField id="travelerName" label="Traveler Name" type="string" defaultValue="Ada Lovelace" />
+          <camunda:formField id="travelerEmail" label="Traveler Email (Mailpit)" type="string" defaultValue="ada.lovelace@example.test" />
+        </camunda:formData>
+      </bpmn:extensionElements>
+      <bpmn:outgoing>Flow_ToLookup</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- Task 1: Geocode & Country Dossier -->
+    <bpmn:serviceTask id="Task_LookupDestination" name="Resolve Destination &amp; Coordinates" camunda:type="external" camunda:topic="fin-trip-lookup" camunda:taskPriority="50">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="action" value="resolve-destination" />
+          <camunda:property name="variablesFormat" value="Simple JSON" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToLookup</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToWeather</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Boundary Error for Invalid Destination -->
+    <bpmn:boundaryEvent id="Boundary_UnknownDestination" name="Unknown Destination" attachedToRef="Task_LookupDestination">
+      <bpmn:outgoing>Flow_ToFallback</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorDef_UnknownDestination" errorRef="Error_UNKNOWN_DESTINATION" />
+    </bpmn:boundaryEvent>
+
+    <!-- Fallback Task: Send Destination Suggestions -->
+    <bpmn:serviceTask id="Task_FallbackNotice" name="Send Destination Suggestions Email" camunda:type="external" camunda:topic="fin-destination-fallback">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="action" value="send-fallback" />
+          <camunda:property name="variablesFormat" value="Simple JSON" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToFallback</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToFallbackEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Fallback" name="Suggestions Delivered">
+      <bpmn:incoming>Flow_ToFallbackEnd</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Task 2: Live FMI Weather & Cultural Bio -->
+    <bpmn:serviceTask id="Task_FetchWeather" name="Fetch Live FMI Weather &amp; Cultural Dossier" camunda:type="external" camunda:topic="fin-weather-check" camunda:taskPriority="50">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="action" value="fetch-weather" />
+          <camunda:property name="variablesFormat" value="Simple JSON" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToWeather</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToUserCurate</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- User Task: Traveler Preferences, Sauna & Dining Choices -->
+    <bpmn:userTask id="UserTask_CurateTrip" name="Curate Trip, Sauna &amp; Dining Plan" camunda:candidateUsers="admin">
+      <bpmn:extensionElements>
+        <camunda:formData>
+          <camunda:formField id="destinationName" label="Destination" type="string">
+            <camunda:validation>
+              <camunda:constraint name="readonly" />
+            </camunda:validation>
+          </camunda:formField>
+          <camunda:formField id="currentTemp" label="Live Temperature (°C)" type="string">
+            <camunda:validation>
+              <camunda:constraint name="readonly" />
+            </camunda:validation>
+          </camunda:formField>
+          <camunda:formField id="weatherCondition" label="Current Weather" type="string">
+            <camunda:validation>
+              <camunda:constraint name="readonly" />
+            </camunda:validation>
+          </camunda:formField>
+          <camunda:formField id="daylightHours" label="Daylight &amp; Sun" type="string">
+            <camunda:validation>
+              <camunda:constraint name="readonly" />
+            </camunda:validation>
+          </camunda:formField>
+          <camunda:formField id="destinationDescription" label="Destination Overview" type="string">
+            <camunda:validation>
+              <camunda:constraint name="readonly" />
+            </camunda:validation>
+          </camunda:formField>
+          <camunda:formField id="seasonVibe" label="Season &amp; Travel Vibe" type="enum" defaultValue="ruska">
+            <camunda:value id="ruska" name="🍂 Autumn Ruska &amp; Trail Hiking" />
+            <camunda:value id="winter" name="❄️ Winter Snow, Skiing &amp; Northern Lights" />
+            <camunda:value id="summer" name="☀️ Summer Lake Life &amp; Midnight Sun" />
+            <camunda:value id="spring" name="🌸 Spring Nature Awakening &amp; Cycling" />
+          </camunda:formField>
+          <camunda:formField id="stayStyle" label="Accommodation Style" type="enum" defaultValue="mökki">
+            <camunda:value id="mökki" name="🪵 Lakeside Mökki (Cabin) with Wood-Fired Sauna" />
+            <camunda:value id="laavu" name="🏕️ Wilderness Camping (Laavu shelter &amp; tent)" />
+            <camunda:value id="hotel" name="🏨 Spa Hotel &amp; Lakeside Resort" />
+          </camunda:formField>
+          <camunda:formField id="diningStyle" label="Lunch &amp; Dinner Dining Style" type="enum" defaultValue="campfire">
+            <camunda:value id="campfire" name="🔥 Wilderness Campfire Cooking (Notskikahvit &amp; Makkara)" />
+            <camunda:value id="regional_classics" name="🐟 Traditional Regional Classics (Muikku, Lohikeitto, Karjalanpiirakka)" />
+            <camunda:value id="bakery_market" name="☕ Market Square &amp; Bakery Cafes (Pyynikki Munkki, Cinnamon Buns)" />
+            <camunda:value id="lakeside_bistro" name="🍷 Panoramic Lakeside Dining" />
+          </camunda:formField>
+          <camunda:formField id="dietaryNotes" label="Dietary Notes" type="string" defaultValue="Fish &amp; seafood lover, local berry desserts" />
+          <camunda:formField id="specialNotes" label="Special Requests / Notes" type="string" defaultValue="Best campfire coffee spot and evening lake view." />
+          <camunda:formField id="confirmTrip" label="Approve &amp; Generate Adventure Guide?" type="boolean" defaultValue="true" />
+        </camunda:formData>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToUserCurate</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToConfirmGateway</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <!-- Gateway: Confirmed or Cancelled -->
+    <bpmn:exclusiveGateway id="Gateway_Confirm" name="Trip Approved?" default="Flow_TripApproved">
+      <bpmn:incoming>Flow_ToConfirmGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_TripApproved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_TripCancelled</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="EndEvent_Cancelled" name="Trip Cancelled">
+      <bpmn:incoming>Flow_TripCancelled</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Task 3: Compile Markdown Guide & Dining Plan -->
+    <bpmn:serviceTask id="Task_CompileItinerary" name="Compile Finnish Guide &amp; Dining Plan" camunda:type="external" camunda:topic="fin-itinerary-compile" camunda:taskPriority="50">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="action" value="compile-guide" />
+          <camunda:property name="variablesFormat" value="Simple JSON" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_TripApproved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDispatch</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Task 4: Deliver Itinerary via PutEmail & PutFile -->
+    <bpmn:serviceTask id="Task_DispatchItinerary" name="Deliver Itinerary Email &amp; Archive" camunda:type="external" camunda:topic="fin-itinerary-dispatch" camunda:taskPriority="50">
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="action" value="dispatch-itinerary" />
+          <camunda:property name="routingKey" value="travel.mailpit" />
+          <camunda:property name="variablesFormat" value="Simple JSON" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_ToDispatch</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToSuccess</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Success" name="Adventure Guide Delivered">
+      <bpmn:incoming>Flow_ToSuccess</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_ToLookup" sourceRef="StartEvent_1" targetRef="Task_LookupDestination" />
+    <bpmn:sequenceFlow id="Flow_ToWeather" sourceRef="Task_LookupDestination" targetRef="Task_FetchWeather" />
+    <bpmn:sequenceFlow id="Flow_ToFallback" sourceRef="Boundary_UnknownDestination" targetRef="Task_FallbackNotice" />
+    <bpmn:sequenceFlow id="Flow_ToFallbackEnd" sourceRef="Task_FallbackNotice" targetRef="EndEvent_Fallback" />
+    <bpmn:sequenceFlow id="Flow_ToUserCurate" sourceRef="Task_FetchWeather" targetRef="UserTask_CurateTrip" />
+    <bpmn:sequenceFlow id="Flow_ToConfirmGateway" sourceRef="UserTask_CurateTrip" targetRef="Gateway_Confirm" />
+    <bpmn:sequenceFlow id="Flow_TripApproved" name="Yes" sourceRef="Gateway_Confirm" targetRef="Task_CompileItinerary" />
+    <bpmn:sequenceFlow id="Flow_TripCancelled" name="No" sourceRef="Gateway_Confirm" targetRef="EndEvent_Cancelled">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${confirmTrip == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_ToDispatch" sourceRef="Task_CompileItinerary" targetRef="Task_DispatchItinerary" />
+    <bpmn:sequenceFlow id="Flow_ToSuccess" sourceRef="Task_DispatchItinerary" targetRef="EndEvent_Success" />
+
+  </bpmn:process>
+
+  <!-- BPMNDI Diagram Representation -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="finnish-travel-planner">
+      
+      <!-- Nodes -->
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="146" y="205" width="70" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_LookupDestination_di" bpmnElement="Task_LookupDestination">
+        <dc:Bounds x="250" y="140" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Boundary_UnknownDestination_di" bpmnElement="Boundary_UnknownDestination">
+        <dc:Bounds x="332" y="202" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="368" y="236" width="58" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_FallbackNotice_di" bpmnElement="Task_FallbackNotice">
+        <dc:Bounds x="250" y="280" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Fallback_di" bpmnElement="EndEvent_Fallback">
+        <dc:Bounds x="462" y="302" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="451" y="345" width="60" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_FetchWeather_di" bpmnElement="Task_FetchWeather">
+        <dc:Bounds x="460" y="140" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="UserTask_CurateTrip_di" bpmnElement="UserTask_CurateTrip">
+        <dc:Bounds x="670" y="140" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_Confirm_di" bpmnElement="Gateway_Confirm" isMarkerVisible="true">
+        <dc:Bounds x="885" y="155" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="873" y="125" width="75" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Cancelled_di" bpmnElement="EndEvent_Cancelled">
+        <dc:Bounds x="892" y="282" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="875" y="325" width="72" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_CompileItinerary_di" bpmnElement="Task_CompileItinerary">
+        <dc:Bounds x="1000" y="140" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_DispatchItinerary_di" bpmnElement="Task_DispatchItinerary">
+        <dc:Bounds x="1210" y="140" width="150" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Success_di" bpmnElement="EndEvent_Success">
+        <dc:Bounds x="1422" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1399" y="205" width="83" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- Edges -->
+      <bpmndi:BPMNEdge id="Flow_ToLookup_di" bpmnElement="Flow_ToLookup">
+        <di:waypoint x="198" y="180" />
+        <di:waypoint x="250" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToWeather_di" bpmnElement="Flow_ToWeather">
+        <di:waypoint x="400" y="180" />
+        <di:waypoint x="460" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToFallback_di" bpmnElement="Flow_ToFallback">
+        <di:waypoint x="350" y="238" />
+        <di:waypoint x="350" y="280" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToFallbackEnd_di" bpmnElement="Flow_ToFallbackEnd">
+        <di:waypoint x="400" y="320" />
+        <di:waypoint x="462" y="320" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToUserCurate_di" bpmnElement="Flow_ToUserCurate">
+        <di:waypoint x="610" y="180" />
+        <di:waypoint x="670" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToConfirmGateway_di" bpmnElement="Flow_ToConfirmGateway">
+        <di:waypoint x="820" y="180" />
+        <di:waypoint x="885" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_TripApproved_di" bpmnElement="Flow_TripApproved">
+        <di:waypoint x="935" y="180" />
+        <di:waypoint x="1000" y="180" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="959" y="162" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_TripCancelled_di" bpmnElement="Flow_TripCancelled">
+        <di:waypoint x="910" y="205" />
+        <di:waypoint x="910" y="282" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="918" y="241" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToDispatch_di" bpmnElement="Flow_ToDispatch">
+        <di:waypoint x="1150" y="180" />
+        <di:waypoint x="1210" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_ToSuccess_di" bpmnElement="Flow_ToSuccess">
+        <di:waypoint x="1360" y="180" />
+        <di:waypoint x="1422" y="180" />
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>
