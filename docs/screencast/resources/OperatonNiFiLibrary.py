@@ -1,3 +1,4 @@
+import os
 import time
 import base64
 import json
@@ -475,8 +476,10 @@ class OperatonNiFiLibrary:
     def open_mailpit_and_view_itinerary(self):
         """Navigates to Mailpit web UI and views the delivered adventure guide."""
         page = self._get_page()
-        page.goto("http://127.0.0.1:8025")
-        page.wait_for_timeout(1000)
+        if "8025" not in page.url:
+            page.goto("http://127.0.0.1:8025")
+        page.wait_for_selector("body", timeout=5000)
+        page.wait_for_timeout(800)
         msg_row = None
         for _ in range(25):
             candidate = page.get_by_text("Finnish Adventure Guide").first

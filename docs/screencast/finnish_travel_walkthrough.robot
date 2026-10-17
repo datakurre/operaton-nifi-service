@@ -127,6 +127,8 @@ Inspect Delivered Email In Mailpit
     ...    title=Delivered Itinerary in Mailpit
     ...    subtitle=Clean Markdown briefing delivered to local inbox
     ...    anonymous=${True}
+    Go To    http://127.0.0.1:8025
+    Wait Until Visible    body
     Focus    actor    solo=${True}
     Open Mailpit And View Itinerary
     Show Step    Itinerary delivered to Mailpit: daily trail route, campfire lunch, fika & sauna plunge!    MAILPIT
@@ -138,6 +140,6 @@ Conclude Screencast
     Chapter    eyebrow=Operaton BPMN + Apache NiFi 2.4.0
     ...    title=Finnish Travel Planner Orchestrated Successfully
     ...    subtitle=Zero heavy AI, zero SQL, deterministic open APIs, and human-in-the-loop task curation
-    Show Step    Operaton BPMN + Apache NiFi 2.4.0: Reliable, deterministic, human-in-the-loop orchestration    OPERATON    duration=3.0
+    Show Step    Operaton BPMN + Apache NiFi 2.4.0: Reliable, deterministic, human-in-the-loop orchestration    OPERATON    duration=1.2
     Subtle Cursor Glide    2.0
     End Observer
