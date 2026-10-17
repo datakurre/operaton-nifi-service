@@ -27,21 +27,30 @@ Start Observing Tasklist
 Observe NiFi Pipeline
     [Setup]    Start Actor Turn    nifi    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 2
     ...    title=Real-Time Geocoding & Live FMI Weather
-    ...    subtitle=Open-Meteo & Wikipedia open APIs in Apache NiFi 2.4.0
+    ...    subtitle=Deterministic Open-Meteo & Wikimedia open APIs in Apache NiFi 2.4.0
     ...    anonymous=${True}
     ${pg_id}=    Get Travel Planner Group Id
-    Go To    ${NIFI_URL}/?processGroupId=${pg_id}
+    Go To    ${NIFI_URL}/#/process-groups/${pg_id}
     Focus    actor    solo=${True}
     Wait Until Visible    \#canvas
     Show Step    Apache NiFi: 4-column flow with Operaton External Task processors    APACHE NIFI
+    Highlight NiFi Processor    Fetch Destination Task
+    Show Step    Column 1 (fin-trip-lookup): acquires task lease and extracts destination preset    APACHE NIFI
     Highlight NiFi Processor    Geocode Open-Meteo
-    Show Step    Column 1 (fin-trip-lookup): resolves coordinates with Open-Meteo Geocoding    APACHE NIFI
-    Subtle Cursor Glide    1.0
-    Pan NiFi Canvas    -500    0
+    Show Step    Invokes Open-Meteo Geocoding API to resolve coordinates for Lieksa / Koli    APACHE NIFI
+    Highlight NiFi Processor    Validate Destination Location
+    Show Step    RouteOnAttribute verifies Finland coordinates; routes unknown cities to BPMN error    APACHE NIFI
+    Highlight NiFi Processor    Complete Destination Lookup
+    Show Step    CompleteExternalTask returns resolved lat/lon to Operaton token via REST    APACHE NIFI
+    Highlight NiFi Processor    Fetch Weather Task
+    Show Step    Column 2 (fin-weather-check): locks weather task for live enrichment    APACHE NIFI
     Highlight NiFi Processor    Fetch Open-Meteo FMI Weather
+    Show Step    Queries Open-Meteo Nordic weather model for temperature, wind and daylight hours    APACHE NIFI
     Highlight NiFi Processor    Fetch Wikipedia Profile
-    Show Step    Column 2 (fin-weather-check): live Finnish weather & Wikipedia cultural dossier    APACHE NIFI
-    Subtle Cursor Glide    1.5
+    Show Step    Queries Wikipedia REST API for destination extract and scenic thumbnail photo    APACHE NIFI
+    Highlight NiFi Processor    Complete Weather & Dossier Task
+    Show Step    Completes task with live weather dossier; token advances to user curation in Tasklist    APACHE NIFI
+    Subtle Cursor Glide    1.0
     [Teardown]    End Actor Turn
 
 Curate Trip In Tasklist
@@ -59,19 +68,25 @@ Observe Itinerary Compilation And Dispatch
     ...    subtitle=Compiling Karjalanpiirakat & muikku dinner, PutEmail & PutFile archive
     ...    anonymous=${True}
     ${pg_id}=    Get Travel Planner Group Id
-    Go To    ${NIFI_URL}/?processGroupId=${pg_id}
+    Go To    ${NIFI_URL}/#/process-groups/${pg_id}
     Focus    actor    solo=${True}
     Wait Until Visible    \#canvas
-    Pan NiFi Canvas    -1100    0
+    Show Step    Human curation approved: NiFi resumes execution for itinerary compilation & dispatch    APACHE NIFI
+    Highlight NiFi Processor    Fetch Itinerary Compile Task
+    Show Step    Column 3 (fin-itinerary-compile): locks task and extracts traveler choices (mökki stay, campfire cooking)    APACHE NIFI
     Highlight NiFi Processor    Map Regional Food & Gear
+    Show Step    Maps regional Karelian delicacies (Karjalanpiirakat, paistetut muikut) and gear list    APACHE NIFI
     Highlight NiFi Processor    Render Adventure Markdown
-    Show Step    Column 3 (fin-itinerary-compile): maps Karelian pies, muikku dinner & gear list    APACHE NIFI
-    Subtle Cursor Glide    1.0
-    Pan NiFi Canvas    -500    0
+    Show Step    Renders customized Markdown itinerary and returns payload to Operaton token    APACHE NIFI
+    Highlight NiFi Processor    Complete Itinerary Compile
+    Highlight NiFi Processor    Fetch Dispatch Task
+    Show Step    Column 4 (fin-itinerary-dispatch): locks dispatch task and sets guide as FlowFile body    APACHE NIFI
     Highlight NiFi Processor    Deliver Itinerary to Mailpit
+    Show Step    PutEmail dispatches personalized HTML/Markdown email to Mailpit SMTP (127.0.0.1:1025)    APACHE NIFI
     Highlight NiFi Processor    Archive Itinerary Markdown
-    Show Step    Column 4 (fin-itinerary-dispatch): PutEmail dispatches to Mailpit; PutFile archives guide    APACHE NIFI
-    Subtle Cursor Glide    1.5
+    Highlight NiFi Processor    Complete Dispatch Task
+    Show Step    PutFile archives guide to disk; CompleteExternalTask finishes the workflow    APACHE NIFI
+    Subtle Cursor Glide    1.0
     [Teardown]    End Actor Turn
 
 Inspect Delivered Email In Mailpit

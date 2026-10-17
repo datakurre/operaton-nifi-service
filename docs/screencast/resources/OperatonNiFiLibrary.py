@@ -143,13 +143,15 @@ class OperatonNiFiLibrary:
     def highlight_canvas_processor(self, name):
         """Smoothly moves mouse to a processor on the NiFi canvas and clicks to select it."""
         page = self._get_page()
-        proc_text = page.locator(f'text.processor-name:text-is("{name}")').first
+        proc_text = page.locator(f'text.processor-name:has-text("{name}")').first
+        if not proc_text.is_visible():
+            page.wait_for_timeout(1000)
         if proc_text.is_visible():
             box = proc_text.bounding_box()
             if box:
                 page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=10)
                 proc_text.click(force=True)
-                page.wait_for_timeout(600)
+                page.wait_for_timeout(700)
 
     @keyword
     def configure_operaton_local_storage(self):
