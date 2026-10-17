@@ -54,15 +54,6 @@ final class ExternalTaskLeases {
         dirty.set(true);
     }
 
-    /**
-     * Record a lock extended outside of the automatic extension.
-     */
-    void extended(String taskId, long newDuration, long now) {
-        if (leases.computeIfPresent(taskId, (id, lease) -> lease.expiringAt(now + newDuration)) != null) {
-            dirty.set(true);
-        }
-    }
-
     void release(String taskId) {
         if (leases.remove(taskId) != null) {
             dirty.set(true);

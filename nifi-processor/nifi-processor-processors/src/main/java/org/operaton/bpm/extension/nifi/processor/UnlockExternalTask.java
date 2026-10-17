@@ -19,7 +19,7 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 @CapabilityDescription("Unlocks a locked Operaton external task so that it can be fetched again immediately "
         + "by any worker without waiting for its lock to expire.")
-@SeeAlso({FetchAndLockExternalTasks.class, ExtendExternalTaskLock.class})
+@SeeAlso({FetchAndLockExternalTasks.class})
 @ReadsAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id (default)")
 @WritesAttributes({
         @WritesAttribute(attribute = ExternalTaskAttributes.ERROR_STATUS,

@@ -629,7 +629,8 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
     connections = flow_content["processGroupFlow"]["flow"]["connections"]
     existing_names = {p["component"]["name"] for p in processors}
 
-    if not force_rebuild and "Extract Order Attributes" in existing_names and "ExtendExternalTaskLock" in existing_names:
+    # Canvases built before lock extension became automatic still have the removed ExtendExternalTaskLock
+    if not force_rebuild and "Extract Order Attributes" in existing_names and "ExtendExternalTaskLock" not in existing_names:
         print("Multi-stage Order Fulfillment NiFi flow is already configured.")
         return
 
@@ -803,20 +804,6 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         },
         auto_term=["failure", "unmatched"],
     )
-    extend_lock = _create_processor(
-        nifi_addr,
-        root_id,
-        "ExtendExternalTaskLock",
-        "org.operaton.bpm.extension.nifi.processor.ExtendExternalTaskLock",
-        operaton_bundle,
-        580,
-        440,
-        {
-            "External Task Service": operaton_service_id,
-            "Lock Duration": "10 min",
-        },
-        auto_term=["failure"],
-    )
     route_fraud = _create_processor(
         nifi_addr,
         root_id,
@@ -940,8 +927,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
 
     # Connect Column 2
     _connect(nifi_addr, root_id, fetch_fraud, eval_fraud_json, ["success"])
-    _connect(nifi_addr, root_id, eval_fraud_json, extend_lock, ["matched"])
-    _connect(nifi_addr, root_id, extend_lock, route_fraud, ["success"])
+    _connect(nifi_addr, root_id, eval_fraud_json, route_fraud, ["matched"])
     _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
     _connect(nifi_addr, root_id, route_fraud, bpmn_fraud_error, ["fraud_suspected"])
     _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure"])

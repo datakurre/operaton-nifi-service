@@ -2,5 +2,4 @@ org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks
 org.operaton.bpm.extension.nifi.processor.CompleteExternalTask
 org.operaton.bpm.extension.nifi.processor.HandleExternalTaskFailure
 org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError
-org.operaton.bpm.extension.nifi.processor.ExtendExternalTaskLock
 org.operaton.bpm.extension.nifi.processor.UnlockExternalTask

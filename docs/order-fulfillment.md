@@ -101,16 +101,13 @@ Fetch Fraud Check Tasks (topic: order-fraud-check)
 Extract Fraud Check Attributes (EvaluateJsonPath)
          │ (matched)
          ▼
-ExtendExternalTaskLock (duration: 10 min)
-         │ (success)
-         ▼
 Evaluate Fraud Risk (RouteOnAttribute)
     ├── [low_risk]  → Complete Fraud Check (CompleteExternalTask)
     └── [high_risk] → HandleFraudBpmnError (HandleExternalTaskBpmnError: FRAUD_DETECTED)
 ```
 
 - **`Extract Fraud Check Attributes`**: Extracts `$.orderId` and `$.amount` from the task payload into attributes for downstream routing.
-- **`ExtendExternalTaskLock`**: For intensive checks (such as external risk APIs or ML inference), explicitly extends the lock duration to 10 minutes so the lock does not expire while processing. *(Note: When **Automatic Lock Extension** is enabled on the Controller Service, active task leases are renewed automatically in the background, making this processor optional.)*
+- **Lock extension**: For intensive checks (such as external risk APIs or ML inference), the External Task Service renews the lock of the fetched task in the background while the check runs, so the lock does not expire. No extension step is needed in the flow. See [Lock Extension](index.md#lock-extension) in the README.
 - **`RouteOnAttribute`**: Evaluates whether the transaction exceeds risk limits (`${order.amount:toNumber():gt(10000)}`).
 - **`HandleFraudBpmnError`**: High-risk orders are escalated to the BPMN error boundary event with code `FRAUD_DETECTED`, setting variables `fraudReason` and `flaggedBy`. Operaton immediately routes the token to the **Manual Order Review** user task.
 
@@ -153,8 +150,7 @@ Credentials are never hardcoded. They are dynamically sourced from HashiCorp Vau
    - Worker ID: `#{worker_id}`
    - Username: `#{username}`
    - Password: `#{password}`
-   - Automatic Lock Extension: `false` (opt-in background renewal of active task leases; see [README](index.md#automatic-lock-extension))
-   - Max Lock Lifetime: `1 hour` (maximum lease duration bound for dropped/abandoned tasks)
+   - Max Lock Lifetime: `1 hour` (maximum lease duration bound for dropped/abandoned tasks; see [README](index.md#lock-extension))
 
 ---
 

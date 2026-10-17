@@ -91,7 +91,7 @@ public class TestStandardOperatonExternalTaskService {
 
         runner = TestRunners.newTestRunner(TestProcessor.class);
         service = new StandardOperatonExternalTaskService();
-        // Tests extend locks explicitly with a fake clock
+        // Tests extend locks at fake clock times
         service.setLockExtensionInterval(Duration.ofDays(1).toMillis());
         runner.addControllerService("operaton", service);
         runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL,
@@ -214,17 +214,6 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testExtendLock() throws Exception {
-        runner.enableControllerService(service);
-
-        service.extendLock("task-1", 30000);
-
-        Request request = lastRequest();
-        assertEquals("/engine-rest/external-task/task-1/extendLock", request.path());
-        assertEquals(30000, request.body().get("newDuration").asLong());
-    }
-
-    @Test
     public void testUnlock() throws Exception {
         runner.enableControllerService(service);
 
@@ -256,7 +245,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.setProperty(service, StandardOperatonExternalTaskService.PASSWORD, "secret");
         runner.enableControllerService(service);
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         String expected = "Basic " + Base64.getEncoder()
                 .encodeToString("demo:secret".getBytes(StandardCharsets.UTF_8));
@@ -268,7 +257,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "my-jwt-token");
         runner.enableControllerService(service);
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         assertEquals("Bearer my-jwt-token", lastRequest().authorization());
     }
@@ -281,7 +270,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "top-secret");
         runner.enableControllerService(service);
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         // Verify Operaton request carries acquired Bearer token
         assertEquals("Bearer sa-token-1", lastRequest().authorization());
@@ -305,7 +294,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_SCOPE, "tasks:manage engine:read");
         runner.enableControllerService(service);
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         assertEquals("Bearer sa-token-1", lastRequest().authorization());
         assertEquals(1, tokenRequests.size());
@@ -330,19 +319,19 @@ public class TestStandardOperatonExternalTaskService {
         service.setTokenManager(customManager);
 
         // First call fetches token
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
         assertEquals("Bearer sa-token-1", lastRequest().authorization());
         assertEquals(1, tokenRequests.size());
 
         // Second call 10s later reuses cached token
         now.set(now.get().plusSeconds(10)); // 12:00:10
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
         assertEquals(1, tokenRequests.size());
 
         // Next call 70s later (12:01:20 >= 12:01:10) is within the 30s refresh window -> fetches new token
         now.set(now.get().plusSeconds(70));
         tokenResponseBody = "{\"access_token\": \"sa-token-2\", \"token_type\": \"Bearer\", \"expires_in\": 100}";
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
         assertEquals(2, tokenRequests.size());
         assertEquals("Bearer sa-token-2", lastRequest().authorization());
     }
@@ -398,7 +387,7 @@ public class TestStandardOperatonExternalTaskService {
             exchange.close();
         });
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         // Ensure 2 calls were made to token endpoint and 2 calls to Operaton API
         assertEquals(2, tokenRequests.size());
@@ -434,7 +423,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.enableControllerService(service);
 
         OperatonException e = assertThrows(OperatonException.class,
-                () -> service.extendLock("task-1", 1000));
+                () -> service.unlock("task-1"));
         assertEquals(401, e.getStatusCode());
         assertTrue(e.getMessage().contains("invalid_client"));
     }
@@ -448,7 +437,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
         runner.enableControllerService(service);
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         assertEquals("Bearer mock-provider-token", lastRequest().authorization());
     }
@@ -483,7 +472,7 @@ public class TestStandardOperatonExternalTaskService {
             exchange.close();
         });
 
-        service.extendLock("task-1", 1000);
+        service.unlock("task-1");
 
         assertEquals(1, provider.getRefreshCount());
         assertEquals(2, requests.size());
@@ -516,7 +505,7 @@ public class TestStandardOperatonExternalTaskService {
         });
 
         OperatonException e = assertThrows(OperatonException.class,
-                () -> service.extendLock("task-1", 1000));
+                () -> service.unlock("task-1"));
         assertEquals(401, e.getStatusCode());
         // Must strictly stop after 1 retry (initial + 1 retry = 2 calls)
         assertEquals(2, requests.size());
@@ -567,7 +556,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.enableControllerService(service);
 
         OperatonException e = assertThrows(OperatonException.class,
-                () -> service.extendLock("task-1", 1000));
+                () -> service.unlock("task-1"));
         assertEquals(0, e.getStatusCode());
         assertTrue(e.getMessage().contains("empty access token"));
     }
@@ -681,7 +670,7 @@ public class TestStandardOperatonExternalTaskService {
         server.stop(0);
 
         OperatonException e = assertThrows(OperatonException.class,
-                () -> service.extendLock("task-1", 1000));
+                () -> service.unlock("task-1"));
 
         assertEquals(0, e.getStatusCode());
     }
@@ -691,8 +680,7 @@ public class TestStandardOperatonExternalTaskService {
 
     private final AtomicLong now = new AtomicLong(T0);
 
-    private void enableAutomaticLockExtension(String maxLockLifetime) {
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTOMATIC_LOCK_EXTENSION, "true");
+    private void enableWithFakeClock(String maxLockLifetime) {
         if (maxLockLifetime != null) {
             runner.setProperty(service, StandardOperatonExternalTaskService.MAX_LOCK_LIFETIME, maxLockLifetime);
         }
@@ -730,19 +718,8 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testAutomaticLockExtensionIsDisabledByDefault() throws Exception {
-        service.setClock(now::get);
-        runner.enableControllerService(service);
-        fetchTasks("task-1");
-
-        assertEquals(0, service.getLeases().size());
-        extendLocksAt(T0 + 10 * LOCK_DURATION);
-        assertTrue(extendLockRequests().isEmpty());
-    }
-
-    @Test
     public void testAutomaticLockExtension() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
 
         extendLocksAt(T0 + LOCK_DURATION / 2 - 1);
@@ -763,8 +740,16 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
+    public void testLocksAsLongAsMaxLockLifetimeAreNotExtended() throws Exception {
+        enableWithFakeClock(null);
+        fetchTasks(3_600_000, "task-1");
+
+        assertEquals(0, service.getLeases().size());
+    }
+
+    @Test
     public void testFinishedTasksAreNoLongerExtended() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1", "task-2", "task-3", "task-4", "task-5");
         assertEquals(5, service.getLeases().size());
 
@@ -781,7 +766,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testFailedCompletionKeepsExtendingLock() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
         responseStatus = 500;
 
@@ -792,7 +777,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testMaxLockLifetime() throws Exception {
-        enableAutomaticLockExtension("90 sec");
+        enableWithFakeClock("90 sec");
         fetchTasks("task-1");
 
         // Extended only up to the max lifetime
@@ -807,20 +792,8 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testExplicitExtendLockPostponesAutomaticExtension() throws Exception {
-        enableAutomaticLockExtension(null);
-        fetchTasks("task-1");
-
-        service.extendLock("task-1", 10 * LOCK_DURATION);
-
-        extendLocksAt(T0 + LOCK_DURATION);
-        assertEquals(1, extendLockRequests().size());
-        assertEquals(T0 + 10 * LOCK_DURATION, service.getLeases().get("task-1").expiresAt());
-    }
-
-    @Test
     public void testLostLockIsNoLongerExtended() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
         responseStatus = 404;
         responseBody = "{\"type\": \"InvalidRequestException\", \"message\": \"not found\"}";
@@ -834,7 +807,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testUnavailableEngineRetriesExtension() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
         responseStatus = 503;
 
@@ -849,7 +822,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testFailingTaskDoesNotBlockOtherExtensions() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
         now.set(T0 + 1000);
         fetchTasks("task-2");
@@ -867,7 +840,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testUnavailableEngineEndsExtensionRound() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1", "task-2");
         responseStatus = 503;
 
@@ -878,7 +851,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testShortLocksAreNotExtended() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
 
         fetchTasks(2000, "task-1");
 
@@ -887,7 +860,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testLeasesAreRestoredAfterRestart() throws Exception {
-        enableAutomaticLockExtension(null);
+        enableWithFakeClock(null);
         fetchTasks("task-1");
         extendLocksAt(T0);
 
@@ -899,18 +872,6 @@ public class TestStandardOperatonExternalTaskService {
         runner.enableControllerService(service);
         extendLocksAt(T0 + LOCK_DURATION / 2);
         assertEquals("/engine-rest/external-task/task-1/extendLock", lastRequest().path());
-    }
-
-    @Test
-    public void testStateIsClearedWhenAutomaticLockExtensionIsTurnedOff() throws Exception {
-        enableAutomaticLockExtension(null);
-        fetchTasks("task-1");
-        runner.disableControllerService(service);
-
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTOMATIC_LOCK_EXTENSION, "false");
-        runner.enableControllerService(service);
-
-        assertTrue(runner.getStateManager(service).getState(Scope.LOCAL).toMap().isEmpty());
     }
 
     public static class MockOAuth2AccessTokenProvider extends AbstractControllerService

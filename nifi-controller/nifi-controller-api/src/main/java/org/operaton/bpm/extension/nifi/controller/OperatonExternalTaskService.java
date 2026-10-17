@@ -118,13 +118,6 @@ public interface OperatonExternalTaskService extends ControllerService {
                          String variablesJson) throws OperatonException;
 
     /**
-     * Extend the lock of a locked external task.
-     *
-     * @param newDuration new lock duration in milliseconds from now
-     */
-    void extendLock(String taskId, long newDuration) throws OperatonException;
-
-    /**
      * Unlock a locked external task so that it can be fetched again immediately.
      */
     void unlock(String taskId) throws OperatonException;

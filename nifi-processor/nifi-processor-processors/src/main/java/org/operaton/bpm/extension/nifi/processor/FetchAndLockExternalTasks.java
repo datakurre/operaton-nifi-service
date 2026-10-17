@@ -32,10 +32,10 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 @CapabilityDescription("Fetches and locks Operaton external tasks of a topic and emits one FlowFile "
         + "per task with the fetched process variables as JSON content. Finish each task with "
         + "CompleteExternalTask, HandleExternalTaskFailure or HandleExternalTaskBpmnError before "
-        + "its lock expires, or the task will be fetched again. Locks can be extended with "
-        + "ExtendExternalTaskLock or by Automatic Lock Extension of the External Task Service.")
+        + "its lock expires, or the task will be fetched again. The locks are extended automatically "
+        + "by the External Task Service until the task is finished.")
 @SeeAlso({CompleteExternalTask.class, HandleExternalTaskFailure.class,
-        HandleExternalTaskBpmnError.class, ExtendExternalTaskLock.class, UnlockExternalTask.class})
+        HandleExternalTaskBpmnError.class, UnlockExternalTask.class})
 @WritesAttributes({
         @WritesAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id"),
         @WritesAttribute(attribute = ExternalTaskAttributes.TOPIC_NAME, description = "Topic name"),
@@ -84,7 +84,8 @@ public class FetchAndLockExternalTasks extends AbstractProcessor {
 
     public static final PropertyDescriptor LOCK_DURATION = new PropertyDescriptor.Builder()
             .name("Lock Duration")
-            .description("How long fetched tasks stay locked for this worker")
+            .description("Initial lock duration of fetched tasks. The External Task Service extends the locks "
+                    + "in the background until the tasks are finished or Max Lock Lifetime has passed.")
             .required(true)
             .defaultValue("5 min")
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)

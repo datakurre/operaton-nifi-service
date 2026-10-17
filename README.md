@@ -20,7 +20,6 @@ wrapping the Operaton External Task REST API (`/external-task/...`).
 | Bearer Token | optional | Fixed OAuth2 / JWT Bearer token (sensitive; used when dynamic OAuth2 service account is not configured) |
 | Username / Password | optional | HTTP Basic authentication credentials (`Password` is marked sensitive for Vault / Parameter Contexts) |
 | Request Timeout | `30 sec` | HTTP request timeout (long polling timeout is added on top) |
-| Automatic Lock Extension | `false` | Extend the locks of fetched tasks in the background until they are completed, failed, have thrown a BPMN error or are unlocked (see [Automatic Lock Extension](#automatic-lock-extension)) |
 | Max Lock Lifetime | `1 hour` | How long after fetching locks are extended at most |
 
 `nifi-processor/` — processors using that service:
@@ -31,7 +30,6 @@ wrapping the Operaton External Task REST API (`/external-task/...`).
 | CompleteExternalTask | Completes the task, setting variables from FlowFile content | `External Task ID` (`${operaton.externalTask.id}`), `Variables Format` (`Simple JSON`), `Local Variables` (`false`) |
 | HandleExternalTaskFailure | Reports a failure; decrements `operaton.externalTask.retries` (or uses *Default Retries* on the first failure); 0 retries creates an incident | `External Task ID` (`${operaton.externalTask.id}`), `Error Message` (`${operaton.error.message}`), `Error Details`, `Retries` (optional override), `Default Retries` (`3`), `Retry Timeout` (`1 min`), `Variables Format` (`None`), `Local Variables` (`false`) |
 | HandleExternalTaskBpmnError | Throws a BPMN error with an error code to be caught by an error boundary event or event sub-process | `External Task ID` (`${operaton.externalTask.id}`), `Error Code`, `Error Message`, `Variables Format` (`None`) |
-| ExtendExternalTaskLock | Extends the lock before long-running steps; not needed with *Automatic Lock Extension* | `External Task ID` (`${operaton.externalTask.id}`), `Lock Duration` (`5 min`) |
 | UnlockExternalTask | Releases the lock on an external task so another worker can pick it up immediately | `External Task ID` (`${operaton.externalTask.id}`) |
 
 The task ID is read from `${operaton.externalTask.id}` by default. When an API call fails, the FlowFile is routed to `failure` with `operaton.error.status` (HTTP status code, `0` if connection/client error) and `operaton.error.message`, so a failed *Complete* or *BpmnError* can be routed straight to *HandleExternalTaskFailure*.
@@ -61,11 +59,11 @@ The task ID is read from `${operaton.externalTask.id}` by default. When an API c
    - **BPMN Errors (`HandleExternalTaskBpmnError`)**: Represents modeled domain/business exceptions caught by BPMN boundary events or event sub-processes in Operaton. FlowFile content can optionally supply variables with the error.
    - **Technical Failures (`HandleExternalTaskFailure`)**: Represents unexpected processing exceptions or upstream service failures. Decrements remaining retries, optionally passes variables/localVariables, and creates an Operaton incident once retries reach 0.
 
-### Automatic Lock Extension
+### Lock Extension
 
-With *Automatic Lock Extension* enabled on the controller service, flows need no
-`ExtendExternalTaskLock` steps. The service remembers every task it fetches and, once half of the
-fetch *Lock Duration* has passed, extends the lock by that duration again. It stops when:
+The controller service extends the locks of the tasks it fetches in the background, so flows need
+no extra steps for long-running processing. The service remembers every task it fetches and, once
+half of the fetch *Lock Duration* has passed, extends the lock by that duration again. It stops when:
 
 - the task is completed, failed, has thrown a BPMN error or is unlocked through the service;
 - Operaton rejects an extension with `400` or `404`, e.g. because the task was finished elsewhere,
@@ -77,12 +75,13 @@ fetch *Lock Duration* has passed, extends the lock by that duration again. It st
 Other errors are retried on the next round, one second after the previous round ends. When
 Operaton is unavailable, the round stops at the first failure. Locks are extended one at a time,
 the soonest expiring first, each request timing out after a quarter of its *Lock Duration*
-(at most *Request Timeout*). The extensions therefore keep up only as long as all due locks can
+(at least 1 second, at most *Request Timeout*). The extensions therefore keep up only as long as all due locks can
 be extended within half of the *Lock Duration*.
 
 The tracked tasks are kept in the service's local state, so their locks are still extended after a
 NiFi restart, as long as the locks have not expired meanwhile. Locks fetched with a *Lock Duration*
-under 3 seconds are not extended, as they could expire between two rounds.
+under 3 seconds are not extended, as they could expire between two rounds. Nor are locks as long as
+*Max Lock Lifetime* or longer, as they would be stopped at once.
 
 Locks are extended by the node that fetched the task. A FlowFile load balanced to another node
 cannot finish its task anyway, because the other node has a different *Worker ID*. The lock of such
@@ -91,6 +90,11 @@ a task is extended until *Max Lock Lifetime*.
 Keep the fetch *Lock Duration* short, e.g. `1 min`, so that the locks of tasks stuck
 on a stopped node expire soon. Set *Max Lock Lifetime* above the longest time
 a task may legitimately spend in the flow, including time waiting in queues.
+
+**Upgrading:** the *Automatic Lock Extension* property was removed, as locks are always extended now,
+and its value is dropped from the controller service on upgrade. Flows that use the removed
+`ExtendExternalTaskLock` processor must delete it (NiFi shows it as missing) and connect its incoming
+connection to the next processor.
 
 ### Attributes Reference
 

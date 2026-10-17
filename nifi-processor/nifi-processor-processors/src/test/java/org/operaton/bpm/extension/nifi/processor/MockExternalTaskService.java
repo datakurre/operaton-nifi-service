@@ -85,11 +85,6 @@ public class MockExternalTaskService extends AbstractControllerService
     }
 
     @Override
-    public void extendLock(String taskId, long newDuration) throws OperatonException {
-        record("extendLock", taskId, newDuration);
-    }
-
-    @Override
     public void unlock(String taskId) throws OperatonException {
         record("unlock", taskId);
     }

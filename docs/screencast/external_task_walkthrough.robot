@@ -48,10 +48,7 @@ Process Order In Apache NiFi
     Go To    ${NIFI_URL}/
     Wait Until Visible    \#canvas
     Show Step    Apache NiFi canvas: 3-column pipeline with Operaton External Task processors    APACHE NIFI
-    Pan NiFi Canvas    -400    0
-    Show Step    ExtendExternalTaskLock renews leases (not needed with Automatic Lock Extension)    APACHE NIFI
-    Highlight NiFi Processor    ExtendExternalTaskLock
-    Pan NiFi Canvas    400    0
+    Show Step    Locks are extended automatically by the External Task Service while the flow runs    APACHE NIFI
     # Fetch and lock task ORD-1001
     Show Step    Starting FetchAndLockExternalTasks: acquiring order ORD-1001 lease from Operaton    APACHE NIFI
     Start NiFi Processor    FetchAndLockExternalTasks

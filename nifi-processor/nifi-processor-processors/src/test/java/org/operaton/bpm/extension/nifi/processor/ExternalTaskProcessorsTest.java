@@ -297,18 +297,6 @@ public class ExternalTaskProcessorsTest {
     }
 
     @Test
-    public void testExtendLock() throws Exception {
-        TestRunner runner = runner(ExtendExternalTaskLock.class);
-        runner.setProperty(ExtendExternalTaskLock.LOCK_DURATION, "${lockDuration}");
-
-        runner.enqueue("", Map.of(ExternalTaskAttributes.ID, "task-1", "lockDuration", "10 min"));
-        runner.run();
-
-        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_SUCCESS, 1);
-        assertEquals(List.of("task-1", 600000L), service.lastCall().args());
-    }
-
-    @Test
     public void testFetchAndLockWithExtendedFiltersAndAttributes() throws Exception {
         TestRunner runner = runner(FetchAndLockExternalTasks.class);
         runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
