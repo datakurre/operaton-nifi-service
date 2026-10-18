@@ -106,7 +106,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     public static final PropertyDescriptor OAUTH2_ACCESS_TOKEN_PROVIDER = new PropertyDescriptor.Builder()
             .name("OAuth2 Access Token Provider")
             .description("Controller service providing OAuth2 access tokens, e.g. a "
-                    + "StandardOauth2AccessTokenProvider using the Client Credentials grant.")
+                    + "StandardOauth2AccessTokenProvider. Recommended for OAuth2 authentication.")
             .identifiesControllerService(OAuth2AccessTokenProvider.class)
             .required(true)
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER)
@@ -289,14 +289,10 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             proxyAuthorization = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
         }
 
-        PropertyValue authStrategyProp = context.getProperty(AUTHENTICATION_STRATEGY);
-        AuthenticationStrategy strategy = AuthenticationStrategy.NONE;
-        if (authStrategyProp != null && authStrategyProp.isSet()) {
-            try {
-                strategy = AuthenticationStrategy.valueOf(authStrategyProp.getValue());
-            } catch (IllegalArgumentException e) {
-                strategy = AuthenticationStrategy.NONE;
-            }
+        AuthenticationStrategy strategy = context.getProperty(AUTHENTICATION_STRATEGY)
+                .asAllowableValue(AuthenticationStrategy.class);
+        if (strategy == null) {
+            strategy = AuthenticationStrategy.NONE;
         }
 
         OAuth2AccessTokenProvider oauth2Provider = null;
@@ -304,25 +300,19 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
         switch (strategy) {
             case OAUTH2_PROVIDER -> {
-                PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
-                if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
-                    oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
-                }
+                oauth2Provider = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER)
+                        .asControllerService(OAuth2AccessTokenProvider.class);
             }
             case BEARER -> {
                 String bearerToken = context.getProperty(BEARER_TOKEN).evaluateAttributeExpressions().getValue();
-                if (bearerToken != null && !bearerToken.isBlank()) {
-                    staticAuthorization = "Bearer " + bearerToken.trim();
-                }
+                staticAuthorization = "Bearer " + bearerToken.trim();
             }
             case BASIC -> {
                 String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
-                if (username != null) {
-                    String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
-                    String credentials = username + ":" + (password == null ? "" : password);
-                    staticAuthorization = "Basic " + Base64.getEncoder()
-                            .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-                }
+                String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
+                String credentials = username.trim() + ":" + (password == null ? "" : password);
+                staticAuthorization = "Basic " + Base64.getEncoder()
+                        .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
             }
             case NONE -> {
             }
