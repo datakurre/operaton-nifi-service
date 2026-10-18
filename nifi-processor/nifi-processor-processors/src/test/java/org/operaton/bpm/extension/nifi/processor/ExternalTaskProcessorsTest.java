@@ -9,11 +9,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
+import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.util.MockFlowFile;
+import org.apache.nifi.util.MockProcessSession;
+import org.apache.nifi.util.SharedSessionState;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.junit.jupiter.api.Test;
@@ -76,6 +82,7 @@ public class ExternalTaskProcessorsTest {
                 .assertAttributeEquals(ExternalTaskAttributes.RETRIES, "2");
         assertEquals("Integer", json(first.getAttribute(ExternalTaskAttributes.VARIABLE_TYPES))
                 .at("/count/type").asText());
+        assertEquals(0, service.calls.stream().filter(c -> "unlock".equals(c.method())).count());
     }
 
     @Test
@@ -103,6 +110,32 @@ public class ExternalTaskProcessorsTest {
         assertEquals(List.of("fetchAndLock", "unlock", "unlock"),
                 service.calls.stream().map(MockExternalTaskService.Call::method).toList());
         assertEquals(List.of("task-2"), service.lastCall().args());
+    }
+
+    @Test
+    public void testFetchAndLockUnlocksTasksOnCommitFailure() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "topic");
+        service.tasks.add(task("task-1", null));
+        service.tasks.add(task("task-2", null));
+
+        FetchAndLockExternalTasks processor = (FetchAndLockExternalTasks) runner.getProcessor();
+        ProcessContext context = runner.getProcessContext();
+        SharedSessionState sharedState = new SharedSessionState(processor, new AtomicLong(0));
+        MockProcessSession session = new MockProcessSession(sharedState, processor) {
+            @Override
+            public void commitAsync(Runnable onSuccess, Consumer<Throwable> onFailure) {
+                onFailure.accept(new RuntimeException("Simulated commit failure"));
+            }
+        };
+
+        processor.onTrigger(context, session);
+
+        assertEquals(List.of("task-1", "task-2"),
+                service.calls.stream()
+                        .filter(c -> "unlock".equals(c.method()))
+                        .map(c -> (String) c.args().get(0))
+                        .toList());
     }
 
     @Test

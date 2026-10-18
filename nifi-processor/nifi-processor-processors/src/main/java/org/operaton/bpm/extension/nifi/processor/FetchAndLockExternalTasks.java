@@ -301,6 +301,14 @@ public class FetchAndLockExternalTasks extends AbstractProcessor {
             unlock(service, tasks);
             throw new ProcessException("Failed to create FlowFiles for locked external tasks", e);
         }
+
+        session.commitAsync(
+                () -> { /* nothing */ },
+                failure -> {
+                    getLogger().error("Failed to commit FlowFiles for {} locked external tasks; unlocking them",
+                            tasks.size(), failure);
+                    unlock(service, tasks);
+                });
     }
 
     private void unlock(OperatonExternalTaskService service, List<ExternalTask> tasks) {
