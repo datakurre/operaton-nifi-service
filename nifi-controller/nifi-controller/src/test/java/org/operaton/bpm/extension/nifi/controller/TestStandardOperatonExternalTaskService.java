@@ -1345,4 +1345,12 @@ public class TestStandardOperatonExternalTaskService {
         assertThrows(OperatonException.class, () -> service.countTasks(""));
         assertThrows(OperatonException.class, () -> service.countTasks(null));
     }
+
+    @Test
+    public void testGetTransitUri() {
+        runner.enableControllerService(service);
+        String expectedBase = "http://127.0.0.1:" + server.getAddress().getPort() + "/engine-rest";
+        assertEquals(expectedBase + "/external-task/task-123", service.getTransitUri("task-123"));
+        assertEquals(expectedBase + "/external-task/task%2Bwith%2Fspecial", service.getTransitUri("task+with/special"));
+    }
 }

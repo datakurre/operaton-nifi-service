@@ -635,6 +635,15 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     }
 
     @Override
+    public String getTransitUri(String taskId) {
+        String base = this.baseUrl;
+        if (base == null) {
+            return OperatonExternalTaskService.super.getTransitUri(taskId);
+        }
+        return base + "/external-task/" + URLEncoder.encode(taskId, StandardCharsets.UTF_8);
+    }
+
+    @Override
     public List<ExternalTask> fetchAndLock(String topicName, int maxTasks, long lockDuration,
                                            List<String> variables, long asyncResponseTimeout)
             throws OperatonException {

@@ -583,4 +583,31 @@ public class ExternalTaskProcessorsTest {
         assertEquals(Outcome.FAILED, results.get(1).getOutcome());
         assertTrue(results.get(1).getExplanation().contains("Topic Name is not configured"));
     }
+
+    @Test
+    public void testFetchAndLockProvenanceTransitUri() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "topic");
+        service.transitUriPrefix = "http://localhost:8080/engine-rest/external-task/";
+        service.tasks.add(task("task-1", null));
+
+        runner.run();
+
+        assertEquals(1, runner.getProvenanceEvents().size());
+        assertEquals("http://localhost:8080/engine-rest/external-task/task-1",
+                runner.getProvenanceEvents().get(0).getTransitUri());
+    }
+
+    @Test
+    public void testCompleteExternalTaskProvenanceTransitUri() throws Exception {
+        TestRunner runner = runner(CompleteExternalTask.class);
+        service.transitUriPrefix = "http://localhost:8080/engine-rest/external-task/";
+
+        runner.enqueue("{}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        assertEquals(1, runner.getProvenanceEvents().size());
+        assertEquals("http://localhost:8080/engine-rest/external-task/task-1",
+                runner.getProvenanceEvents().get(0).getTransitUri());
+    }
 }

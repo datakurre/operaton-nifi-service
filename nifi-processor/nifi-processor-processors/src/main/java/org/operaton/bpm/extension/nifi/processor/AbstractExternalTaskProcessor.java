@@ -83,7 +83,7 @@ public abstract class AbstractExternalTaskProcessor extends AbstractProcessor {
                 throw new IllegalArgumentException("External task id is empty");
             }
             handle(context, session, flowFile, service, taskId);
-            session.getProvenanceReporter().send(flowFile, "operaton:external-task/" + taskId);
+            session.getProvenanceReporter().send(flowFile, service.getTransitUri(taskId));
             session.transfer(flowFile, REL_SUCCESS);
             return;
         } catch (OperatonException e) {

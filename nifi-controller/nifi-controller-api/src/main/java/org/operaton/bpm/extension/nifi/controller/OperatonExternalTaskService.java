@@ -133,4 +133,14 @@ public interface OperatonExternalTaskService extends ControllerService {
     default long countTasks(String topicName) throws OperatonException {
         throw new UnsupportedOperationException("countTasks not supported");
     }
+
+    /**
+     * Get the resolvable transit URI identifying the remote external task resource for provenance events.
+     *
+     * @param taskId the external task id
+     * @return transit URI string
+     */
+    default String getTransitUri(String taskId) {
+        return "operaton:external-task/" + taskId;
+    }
 }

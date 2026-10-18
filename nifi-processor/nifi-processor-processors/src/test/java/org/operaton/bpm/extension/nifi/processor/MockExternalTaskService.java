@@ -24,10 +24,19 @@ public class MockExternalTaskService extends AbstractControllerService
     Long pendingTaskCount;
     boolean throwUnsupportedOnCount = false;
     OperatonException failure;
+    String transitUriPrefix;
 
     @Override
     public String getWorkerId() {
         return "worker-1";
+    }
+
+    @Override
+    public String getTransitUri(String taskId) {
+        if (transitUriPrefix != null) {
+            return transitUriPrefix + taskId;
+        }
+        return OperatonExternalTaskService.super.getTransitUri(taskId);
     }
 
     private void record(String method, Object... args) throws OperatonException {

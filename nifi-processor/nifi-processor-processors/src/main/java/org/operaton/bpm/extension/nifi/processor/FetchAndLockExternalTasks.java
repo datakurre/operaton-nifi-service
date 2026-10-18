@@ -338,7 +338,7 @@ public class FetchAndLockExternalTasks extends AbstractProcessor
                 flowFile = session.write(flowFile, out -> out.write(content));
                 flowFile = session.putAllAttributes(flowFile, attributes);
                 session.getProvenanceReporter().receive(flowFile,
-                        "operaton:external-task/" + task.id());
+                        service.getTransitUri(task.id()));
                 session.transfer(flowFile, REL_SUCCESS);
             }
         } catch (Exception e) {
