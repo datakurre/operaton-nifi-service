@@ -93,17 +93,14 @@ Once running, access the local services:
 ### 🔐 Authentication Options
 
 Requests to Operaton REST API can be authenticated via:
-- **OAuth2 Access Token Provider (Recommended)**: Use NiFi's `StandardOauth2AccessTokenProvider` controller service configured with:
-  - **Grant Type**: `client_credentials`
+- **OAuth2 Access Token Provider**: Use NiFi's `StandardOauth2AccessTokenProvider` controller service configured with:
+  - **Grant Type**: `Client Credentials`
   - **Authorization Server URL**: token endpoint URL (e.g. `https://auth.example.com/oauth/token`)
   - **Client ID** & **Client Secret**
   - **Scope** *(optional)*
 - **HTTP Basic**: Username and optional password.
 - **Bearer Token**: Static Bearer / JWT token.
 - **None**: Unauthenticated.
-
-> [!NOTE]
-> Direct built-in OAuth2 Client Credentials properties on `StandardOperatonExternalTaskService` are deprecated in favor of `StandardOauth2AccessTokenProvider`.
 
 ---
 

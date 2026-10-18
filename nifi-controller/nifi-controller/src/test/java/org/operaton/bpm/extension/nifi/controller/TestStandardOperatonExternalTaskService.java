@@ -61,19 +61,12 @@ public class TestStandardOperatonExternalTaskService {
         }
     }
 
-    /** A request received by the stub OAuth2 token endpoint. */
-    private record TokenRequest(String method, String contentType, String body) {
-    }
-
     private final List<Request> requests = new ArrayList<>();
-    private final List<TokenRequest> tokenRequests = new ArrayList<>();
     private HttpServer server;
     private volatile int responseStatus;
     private volatile String responseBody;
     /** Response statuses overriding {@link #responseStatus} by request path. */
     private final Map<String, Integer> responseStatusByPath = new ConcurrentHashMap<>();
-    private int tokenResponseStatus;
-    private String tokenResponseBody;
 
     private TestRunner runner;
     private StandardOperatonExternalTaskService service;
@@ -82,29 +75,9 @@ public class TestStandardOperatonExternalTaskService {
     public void setUp() throws IOException, InitializationException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/engine-rest", this::handle);
-        server.createContext("/oauth/token", exchange -> {
-            byte[] in = exchange.getRequestBody().readAllBytes();
-            synchronized (tokenRequests) {
-                tokenRequests.add(new TokenRequest(exchange.getRequestMethod(),
-                        exchange.getRequestHeaders().getFirst("Content-Type"),
-                        new String(in, StandardCharsets.UTF_8)));
-            }
-            byte[] out = tokenResponseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(tokenResponseStatus, out.length == 0 ? -1 : out.length);
-            if (out.length > 0) {
-                exchange.getResponseBody().write(out);
-            }
-            exchange.close();
-        });
         server.start();
         responseStatus = 204;
         responseBody = "";
-        tokenResponseStatus = 200;
-        tokenResponseBody = """
-                {"access_token": "sa-token-1", "token_type": "Bearer", "expires_in": 3600}
-                """;
-        tokenRequests.clear();
 
         runner = TestRunners.newTestRunner(TestProcessor.class);
         service = new StandardOperatonExternalTaskService();
@@ -283,180 +256,9 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testOAuth2ServiceAccountAuthentication() throws Exception {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "operaton-client");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "top-secret");
-        runner.enableControllerService(service);
-
-        service.unlock("task-1");
-
-        // Verify Operaton request carries acquired Bearer token
-        assertEquals("Bearer sa-token-1", lastRequest().authorization());
-
-        // Verify token request parameters
-        assertEquals(1, tokenRequests.size());
-        TokenRequest tr = tokenRequests.get(0);
-        assertEquals("POST", tr.method());
-        assertTrue(tr.contentType().startsWith("application/x-www-form-urlencoded"));
-        assertTrue(tr.body().contains("grant_type=client_credentials"));
-        assertTrue(tr.body().contains("client_id=operaton-client"));
-        assertTrue(tr.body().contains("client_secret=top-secret"));
-    }
-
-    @Test
-    public void testOAuth2ServiceAccountWithScope() throws Exception {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_SCOPE, "tasks:manage engine:read");
-        runner.enableControllerService(service);
-
-        service.unlock("task-1");
-
-        assertEquals("Bearer sa-token-1", lastRequest().authorization());
-        assertEquals(1, tokenRequests.size());
-        assertTrue(tokenRequests.get(0).body().contains("scope=tasks%3Amanage+engine%3Aread"));
-    }
-
-    @Test
-    public void testOAuth2ServiceAccountTokenCachingAndRefresh() throws Exception {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
-        runner.enableControllerService(service);
-
-        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-10-16T12:00:00Z"));
-        // Token expires in 100 seconds (i.e. at 12:01:40), refresh window is 30s (triggers at or after 12:01:10)
-        tokenResponseBody = "{\"access_token\": \"sa-token-1\", \"token_type\": \"Bearer\", \"expires_in\": 100}";
-
-        OAuth2TokenManager customManager = new OAuth2TokenManager(
-                java.net.http.HttpClient.newHttpClient(), tokenUrl, "client-app", "secret123",
-                null, Duration.ofSeconds(5), MAPPER, now::get, Duration.ofSeconds(30));
-        service.setTokenManager(customManager);
-
-        // First call fetches token
-        service.unlock("task-1");
-        assertEquals("Bearer sa-token-1", lastRequest().authorization());
-        assertEquals(1, tokenRequests.size());
-
-        // Second call 10s later reuses cached token
-        now.set(now.get().plusSeconds(10)); // 12:00:10
-        service.unlock("task-1");
-        assertEquals(1, tokenRequests.size());
-
-        // Next call 70s later (12:01:20 >= 12:01:10) is within the 30s refresh window -> fetches new token
-        now.set(now.get().plusSeconds(70));
-        tokenResponseBody = "{\"access_token\": \"sa-token-2\", \"token_type\": \"Bearer\", \"expires_in\": 100}";
-        service.unlock("task-1");
-        assertEquals(2, tokenRequests.size());
-        assertEquals("Bearer sa-token-2", lastRequest().authorization());
-    }
-
-    @Test
-    public void testOAuth2ServiceAccountRetryOn401Unauthorized() throws Exception {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
-        runner.enableControllerService(service);
-
-        java.util.concurrent.atomic.AtomicInteger tokenAttempt = new java.util.concurrent.atomic.AtomicInteger(0);
-        server.removeContext("/oauth/token");
-        server.createContext("/oauth/token", exchange -> {
-            int ta = tokenAttempt.incrementAndGet();
-            byte[] in = exchange.getRequestBody().readAllBytes();
-            synchronized (tokenRequests) {
-                tokenRequests.add(new TokenRequest(exchange.getRequestMethod(),
-                        exchange.getRequestHeaders().getFirst("Content-Type"),
-                        new String(in, StandardCharsets.UTF_8)));
-            }
-            String body = ta == 1
-                    ? "{\"access_token\": \"token-old\", \"expires_in\": 3600}"
-                    : "{\"access_token\": \"token-new\", \"expires_in\": 3600}";
-            byte[] out = body.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, out.length);
-            exchange.getResponseBody().write(out);
-            exchange.close();
-        });
-
-        // Configure Operaton to return 401 on the first attempt, then 204 on subsequent attempts
-        server.removeContext("/engine-rest");
-        java.util.concurrent.atomic.AtomicInteger attempt = new java.util.concurrent.atomic.AtomicInteger(0);
-        server.createContext("/engine-rest", exchange -> {
-            int currentAttempt = attempt.incrementAndGet();
-            byte[] in = exchange.getRequestBody().readAllBytes();
-            synchronized (requests) {
-                requests.add(new Request(exchange.getRequestURI().getPath(),
-                        exchange.getRequestHeaders().getFirst("Authorization"),
-                        in.length == 0 ? null : MAPPER.readTree(in)));
-            }
-            if (currentAttempt == 1) {
-                // Reject old token
-                byte[] out = "{\"message\": \"The token is invalid or expired\"}".getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(401, out.length);
-                exchange.getResponseBody().write(out);
-            } else {
-                exchange.sendResponseHeaders(204, -1);
-            }
-            exchange.close();
-        });
-
-        service.unlock("task-1");
-
-        // Ensure 2 calls were made to token endpoint and 2 calls to Operaton API
-        assertEquals(2, tokenRequests.size());
-        assertEquals(2, requests.size());
-        assertEquals("Bearer token-old", requests.get(0).authorization());
-        assertEquals("Bearer token-new", requests.get(1).authorization());
-    }
-
-    @Test
-    public void testOAuth2ServiceAccountValidation() {
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        // Only endpoint configured -> invalid
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.assertNotValid(service);
-
-        // Endpoint and Client ID without Secret -> invalid
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-id");
-        runner.assertNotValid(service);
-
-        // All three configured -> valid
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret");
-        runner.assertValid(service);
-    }
-
-    @Test
-    public void testOAuth2ServiceAccountTokenEndpointError() {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "bad-client");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "wrong-secret");
-        tokenResponseStatus = 401;
-        tokenResponseBody = "{\"error\": \"invalid_client\"}";
-        runner.enableControllerService(service);
-
-        OperatonException e = assertThrows(OperatonException.class,
-                () -> service.unlock("task-1"));
-        assertEquals(401, e.getStatusCode());
-        assertTrue(e.getMessage().contains("invalid_client"));
-    }
-
-    @Test
     public void testOAuth2AccessTokenProviderIntegration() throws Exception {
         MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider();
+        provider.setToken("   mock-provider-token   ");
         runner.addControllerService("oauth2-provider", provider);
         runner.enableControllerService(provider);
 
@@ -509,12 +311,13 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testOAuth2RetryFailsWhenRefreshedTokenAlsoRejected() {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
+    public void testOAuth2RetryFailsWhenRefreshedTokenAlsoRejected() throws Exception {
+        MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider();
+        runner.addControllerService("oauth2-provider", provider);
+        runner.enableControllerService(provider);
+
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
         runner.enableControllerService(service);
 
         // Operaton rejects all tokens with 401
@@ -536,6 +339,7 @@ public class TestStandardOperatonExternalTaskService {
         OperatonException e = assertThrows(OperatonException.class,
                 () -> service.unlock("task-1"));
         assertEquals(401, e.getStatusCode());
+        assertEquals(1, provider.getRefreshCount());
         // Must strictly stop after 1 retry (initial + 1 retry = 2 calls)
         assertEquals(2, requests.size());
     }
@@ -571,18 +375,6 @@ public class TestStandardOperatonExternalTaskService {
         runner.assertNotValid(service);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "val-provider");
         runner.assertValid(service);
-
-        // OAUTH2_CLIENT_CREDENTIALS: invalid if missing any required property
-        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
-        runner.assertNotValid(service);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, "http://localhost/token");
-        runner.assertNotValid(service);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client");
-        runner.assertNotValid(service);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret");
-        runner.assertValid(service);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_SCOPE, "read");
-        runner.assertValid(service);
     }
 
     @Test
@@ -600,9 +392,6 @@ public class TestStandardOperatonExternalTaskService {
     public void testMigratePropertiesOAuth2ProviderPrecedence() {
         Map<String, String> originalProps = new HashMap<>();
         originalProps.put("OAuth2 Access Token Provider", "provider-id");
-        originalProps.put("OAuth2 Token Endpoint", "http://localhost/token");
-        originalProps.put("OAuth2 Client ID", "client");
-        originalProps.put("OAuth2 Client Secret", "secret");
         originalProps.put("Bearer Token", "bearer");
         originalProps.put("Username", "user");
         MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
@@ -610,22 +399,6 @@ public class TestStandardOperatonExternalTaskService {
         service.migrateProperties(config);
 
         assertEquals(AuthenticationStrategy.OAUTH2_PROVIDER.getValue(),
-                config.getPropertyValue("Authentication Strategy").orElse(null));
-    }
-
-    @Test
-    public void testMigratePropertiesOAuth2ClientCredentialsPrecedence() {
-        Map<String, String> originalProps = new HashMap<>();
-        originalProps.put("OAuth2 Token Endpoint", "http://localhost/token");
-        originalProps.put("OAuth2 Client ID", "client");
-        originalProps.put("OAuth2 Client Secret", "secret");
-        originalProps.put("Bearer Token", "bearer");
-        originalProps.put("Username", "user");
-        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
-
-        service.migrateProperties(config);
-
-        assertEquals(AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue(),
                 config.getPropertyValue("Authentication Strategy").orElse(null));
     }
 

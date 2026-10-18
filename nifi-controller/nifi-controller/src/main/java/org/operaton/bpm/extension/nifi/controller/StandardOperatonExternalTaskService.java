@@ -58,8 +58,8 @@ import org.apache.nifi.ssl.SSLContextProvider;
 @Tags({"operaton", "bpmn", "external task", "workflow", "rest", "oauth2"})
 @CapabilityDescription("Operaton External Task client using the Operaton REST API "
         + "(fetch and lock, complete, failure, BPMN error, unlock). "
-        + "Supports dynamic OAuth2 service account (client_credentials), OAuth2 Access Token Provider, "
-        + "static Bearer token, and HTTP Basic authentication. Extends the locks of fetched "
+        + "Supports OAuth2 (through an OAuth2 Access Token Provider service), static Bearer token "
+        + "and HTTP Basic authentication. Extends the locks of fetched "
         + "tasks automatically until they are completed, failed or unlocked.")
 @Stateful(scopes = Scope.LOCAL, description = "The external tasks locked by this node and their lock "
         + "durations, so that their locks are still extended after a restart.")
@@ -88,7 +88,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     public static final PropertyDescriptor SSL_CONTEXT_SERVICE = new PropertyDescriptor.Builder()
             .name("SSL Context Service")
             .description("SSL Context Service providing the trust store (and key store for mutual TLS) "
-                    + "for HTTPS connections to Operaton and the OAuth2 Token Endpoint. "
+                    + "for HTTPS connections to Operaton. "
                     + "The JVM default trust store is used when not set.")
             .required(false)
             .identifiesControllerService(SSLContextProvider.class)
@@ -107,76 +107,16 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
     public static final PropertyDescriptor OAUTH2_ACCESS_TOKEN_PROVIDER = new PropertyDescriptor.Builder()
             .name("OAuth2 Access Token Provider")
-            .description("OAuth2 Access Token Provider Controller Service. Recommended for OAuth2 authentication "
-                    + "over direct service account properties.")
+            .description("Controller service providing OAuth2 access tokens, e.g. a "
+                    + "StandardOauth2AccessTokenProvider using the Client Credentials grant.")
             .identifiesControllerService(OAuth2AccessTokenProvider.class)
             .required(true)
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER)
             .build();
 
-    /**
-     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
-     */
-    @Deprecated
-    public static final PropertyDescriptor OAUTH2_TOKEN_ENDPOINT = new PropertyDescriptor.Builder()
-            .name("OAuth2 Token Endpoint")
-            .description("OAuth2 Token Endpoint URL for service account authentication via client_credentials grant, "
-                    + "e.g. https://auth.example.com/oauth/token. When configured along with Client ID and Secret, "
-                    + "tokens are automatically fetched, cached, and refreshed before expiration. "
-                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
-            .required(true)
-            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
-            .addValidator(StandardValidators.URL_VALIDATOR)
-            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
-            .build();
-
-    /**
-     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
-     */
-    @Deprecated
-    public static final PropertyDescriptor OAUTH2_CLIENT_ID = new PropertyDescriptor.Builder()
-            .name("OAuth2 Client ID")
-            .description("OAuth2 Client ID for service account authentication. "
-                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
-            .required(true)
-            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
-            .build();
-
-    /**
-     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
-     */
-    @Deprecated
-    public static final PropertyDescriptor OAUTH2_CLIENT_SECRET = new PropertyDescriptor.Builder()
-            .name("OAuth2 Client Secret")
-            .description("OAuth2 Client Secret for service account authentication. "
-                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
-            .required(true)
-            .sensitive(true)
-            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
-            .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
-            .build();
-
-    /**
-     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
-     */
-    @Deprecated
-    public static final PropertyDescriptor OAUTH2_SCOPE = new PropertyDescriptor.Builder()
-            .name("OAuth2 Scope")
-            .description("Optional scope(s) for OAuth2 client_credentials token requests. "
-                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
-            .required(false)
-            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
-            .build();
-
     public static final PropertyDescriptor BEARER_TOKEN = new PropertyDescriptor.Builder()
             .name("Bearer Token")
-            .description("Fixed Bearer token for HTTP OAuth2 / token authentication. Used when OAuth2 "
-                    + "service account / provider is not configured; takes precedence over Username/Password.")
+            .description("Fixed Bearer token sent in the Authorization header.")
             .required(true)
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
@@ -238,10 +178,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             PROXY_CONFIGURATION_SERVICE,
             AUTHENTICATION_STRATEGY,
             OAUTH2_ACCESS_TOKEN_PROVIDER,
-            OAUTH2_TOKEN_ENDPOINT,
-            OAUTH2_CLIENT_ID,
-            OAUTH2_CLIENT_SECRET,
-            OAUTH2_SCOPE,
             BEARER_TOKEN,
             USERNAME,
             PASSWORD,
@@ -256,7 +192,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     private volatile Duration requestTimeout;
 
     private volatile OAuth2AccessTokenProvider oauth2Provider;
-    private volatile OAuth2TokenManager tokenManager;
     private volatile String staticAuthorization;
 
     private final ExternalTaskLeases leases = new ExternalTaskLeases();
@@ -287,10 +222,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             final AuthenticationStrategy strategy;
             if (config.isPropertySet(OAUTH2_ACCESS_TOKEN_PROVIDER.getName())) {
                 strategy = AuthenticationStrategy.OAUTH2_PROVIDER;
-            } else if (config.isPropertySet(OAUTH2_TOKEN_ENDPOINT.getName())
-                    && config.isPropertySet(OAUTH2_CLIENT_ID.getName())
-                    && config.isPropertySet(OAUTH2_CLIENT_SECRET.getName())) {
-                strategy = AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS;
             } else if (config.isPropertySet(BEARER_TOKEN.getName())) {
                 strategy = AuthenticationStrategy.BEARER;
             } else if (config.isPropertySet(USERNAME.getName())) {
@@ -308,7 +239,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             Duration requestTimeout,
             AuthenticationStrategy strategy,
             OAuth2AccessTokenProvider oauth2Provider,
-            OAuth2TokenManager tokenManager,
             String staticAuthorization) {
     }
 
@@ -365,7 +295,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
 
         OAuth2AccessTokenProvider oauth2Provider = null;
-        OAuth2TokenManager tokenManager = null;
         String staticAuthorization = null;
 
         switch (strategy) {
@@ -373,16 +302,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
                 if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
                     oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
-                }
-            }
-            case OAUTH2_CLIENT_CREDENTIALS -> {
-                String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
-                String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
-                String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
-                String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
-                if (tokenEndpoint != null && clientId != null && clientSecret != null) {
-                    tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
-                            clientSecret, scope, requestTimeout, mapper);
                 }
             }
             case BEARER -> {
@@ -404,7 +323,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             }
         }
 
-        return new ClientConfig(client, baseUrl, requestTimeout, strategy, oauth2Provider, tokenManager, staticAuthorization);
+        return new ClientConfig(client, baseUrl, requestTimeout, strategy, oauth2Provider, staticAuthorization);
     }
 
     @OnEnabled
@@ -418,12 +337,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         this.baseUrl = config.baseUrl();
         this.requestTimeout = config.requestTimeout();
         this.oauth2Provider = config.oauth2Provider();
-        this.tokenManager = config.tokenManager();
         this.staticAuthorization = config.staticAuthorization();
-
-        if (config.strategy() == AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS) {
-            getLogger().warn("Authentication Strategy OAuth2 Client Credentials is deprecated; use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider instead");
-        }
 
         startLockExtension(context);
     }
@@ -475,24 +389,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                                     .explanation("Successfully obtained OAuth2 access token from controller service")
                                     .build());
                         }
-                    }
-                }
-                case OAUTH2_CLIENT_CREDENTIALS -> {
-                    if (config.tokenManager() == null) {
-                        results.add(new ConfigVerificationResult.Builder()
-                                .verificationStepName("Authentication")
-                                .outcome(ConfigVerificationResult.Outcome.FAILED)
-                                .explanation("OAuth2 Client Credentials properties (Endpoint, Client ID, Client Secret) are incomplete")
-                                .build());
-                        authSuccess = false;
-                    } else {
-                        String token = config.tokenManager().getAccessToken();
-                        authHeader = "Bearer " + token;
-                        results.add(new ConfigVerificationResult.Builder()
-                                .verificationStepName("Authentication")
-                                .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
-                                .explanation("Successfully acquired OAuth2 access token via client_credentials grant")
-                                .build());
                     }
                 }
                 case BASIC -> {
@@ -645,20 +541,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             // close() would wait for in-flight (long polling) requests to finish
             httpClient.shutdownNow();
         }
-        if (tokenManager != null) {
-            tokenManager.invalidate();
-            tokenManager = null;
-        }
         oauth2Provider = null;
         staticAuthorization = null;
-    }
-
-    OAuth2TokenManager getTokenManager() {
-        return tokenManager;
-    }
-
-    void setTokenManager(OAuth2TokenManager tokenManager) {
-        this.tokenManager = tokenManager;
     }
 
     void setClock(LongSupplier clock) {
@@ -927,10 +811,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             }
             return "Bearer " + details.getAccessToken().trim();
         }
-        OAuth2TokenManager tm = this.tokenManager;
-        if (tm != null) {
-            return "Bearer " + tm.getAccessToken();
-        }
         return staticAuthorization;
     }
 
@@ -973,14 +853,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         int status = response.statusCode();
         if (status == 401 && retryOnUnauthorized) {
             OAuth2AccessTokenProvider provider = this.oauth2Provider;
-            OAuth2TokenManager tm = this.tokenManager;
             if (provider != null) {
                 provider.refreshAccessDetails();
-                return post(path, body, timeout, false);
-            } else if (tm != null) {
-                String usedToken = authHeader != null && authHeader.startsWith("Bearer ")
-                        ? authHeader.substring(7).trim() : null;
-                tm.invalidate(usedToken);
                 return post(path, body, timeout, false);
             }
         }
@@ -1045,14 +919,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         int status = response.statusCode();
         if (status == 401 && retryOnUnauthorized) {
             OAuth2AccessTokenProvider provider = this.oauth2Provider;
-            OAuth2TokenManager tm = this.tokenManager;
             if (provider != null) {
                 provider.refreshAccessDetails();
-                return get(path, timeout, false);
-            } else if (tm != null) {
-                String usedToken = authHeader != null && authHeader.startsWith("Bearer ")
-                        ? authHeader.substring(7).trim() : null;
-                tm.invalidate(usedToken);
                 return get(path, timeout, false);
             }
         }

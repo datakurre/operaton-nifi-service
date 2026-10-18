@@ -40,14 +40,10 @@ The controller service wraps the Operaton External Task REST API, maintains acti
 | :--- | :--- | :---: | :---: | :--- |
 | **Operaton REST URL** | `http://localhost:8080/engine-rest` | No | Yes (EL: `ENVIRONMENT`) | Base URL of the Operaton REST API. Compatible with NiFi Parameter Contexts (`#{url}`). |
 | **Worker ID** | `nifi-${hostname()}` | No | Yes (EL: `ENVIRONMENT`) | Unique identifier for the worker node holding the task lock. |
-| **SSL Context Service** | *(none)* | No | No | SSL Context Service providing trust store (and key store for mutual TLS) for HTTPS connections to Operaton and OAuth2 Token Endpoint. JVM default trust store is used when not set. |
+| **SSL Context Service** | *(none)* | No | No | SSL Context Service providing trust store (and key store for mutual TLS) for HTTPS connections to Operaton. JVM default trust store is used when not set. |
 | **Proxy Configuration Service** | *(none)* | No | No | Specifies the Proxy Configuration Controller Service to proxy network requests to Operaton. |
-| **Authentication Strategy** | `None` | No | No | How requests to the Operaton REST API are authenticated. Allowable values: `None`, `HTTP Basic`, `Bearer Token`, `OAuth2 Access Token Provider`, `OAuth2 Client Credentials` *(Deprecated)*. Dependent credential properties are displayed and validated based on this selection. |
-| **OAuth2 Access Token Provider** | *(none)* | No | No | Controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 tokens. Recommended for OAuth2 authentication. Required when Authentication Strategy is `OAuth2 Access Token Provider`. |
-| **OAuth2 Token Endpoint** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | *(Deprecated: use OAuth2 Access Token Provider)* Token URL for dynamic `client_credentials` grant authentication. Required when Authentication Strategy is `OAuth2 Client Credentials`. |
-| **OAuth2 Client ID** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | *(Deprecated: use OAuth2 Access Token Provider)* OAuth2 Client ID for service account authentication. Required when Authentication Strategy is `OAuth2 Client Credentials`. |
-| **OAuth2 Client Secret** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | *(Deprecated: use OAuth2 Access Token Provider)* OAuth2 Client Secret (sensitive; for Vault / Parameter Contexts). Required when Authentication Strategy is `OAuth2 Client Credentials`. |
-| **OAuth2 Scope** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | *(Deprecated: use OAuth2 Access Token Provider)* Optional scope(s) for the OAuth2 client credentials grant. Shown when Authentication Strategy is `OAuth2 Client Credentials`. |
+| **Authentication Strategy** | `None` | No | No | How requests to the Operaton REST API are authenticated. Allowable values: `None`, `HTTP Basic`, `Bearer Token`, `OAuth2 Access Token Provider`. Dependent credential properties are displayed and validated based on this selection. |
+| **OAuth2 Access Token Provider** | *(none)* | No | No | Controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 tokens. Required when Authentication Strategy is `OAuth2 Access Token Provider`. |
 | **Bearer Token** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | Fixed Bearer / JWT token for static authorization headers. Required when Authentication Strategy is `Bearer Token`. |
 | **Username** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth username (`#{username}`). Required when Authentication Strategy is `HTTP Basic`. |
 | **Password** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth password (sensitive; `#{password}`). Shown when Authentication Strategy is `HTTP Basic`. |
@@ -57,12 +53,12 @@ The controller service wraps the Operaton External Task REST API, maintains acti
 > [!NOTE]
 > **Proxy Authentication Note:** The JDK `HttpClient` disables Basic authentication for HTTPS tunneling (`CONNECT`) by default (`jdk.http.auth.tunneling.disabledSchemes`). For proxies requiring Basic authentication, plain HTTP to Operaton is supported; for HTTPS through an authenticating proxy, ensure the JVM's `jdk.http.auth.tunneling.disabledSchemes` networking property is configured accordingly or use an unauthenticated proxy.
 
-### Configuring OAuth2 Authentication (Recommended)
+### Configuring OAuth2 Authentication
 
 To authenticate requests to Operaton with OAuth2 using client credentials, configure a `StandardOauth2AccessTokenProvider` controller service (provided by NiFi's `nifi-oauth2-provider-nar`):
 1. Add a **StandardOauth2AccessTokenProvider** controller service.
 2. Configure its properties:
-   - **Grant Type**: `client_credentials`
+   - **Grant Type**: `Client Credentials`
    - **Authorization Server URL**: URL of the token endpoint, e.g. `https://auth.example.com/oauth/token`
    - **Client ID**: OAuth2 client identifier
    - **Client Secret**: OAuth2 client secret
@@ -72,9 +68,6 @@ To authenticate requests to Operaton with OAuth2 using client credentials, confi
 3. In `StandardOperatonExternalTaskService`:
    - Set **Authentication Strategy** to `OAuth2 Access Token Provider`.
    - Set **OAuth2 Access Token Provider** to reference the configured service.
-
-> [!WARNING]
-> **OAuth2 Client Credentials Deprecation**: Direct OAuth2 service account configuration via the built-in `OAuth2 Client Credentials` strategy is deprecated in favor of `StandardOauth2AccessTokenProvider` and will be removed in a future release. Existing configurations will continue to function.
 
 ### Automatic Background Lock Extension Engine
 
