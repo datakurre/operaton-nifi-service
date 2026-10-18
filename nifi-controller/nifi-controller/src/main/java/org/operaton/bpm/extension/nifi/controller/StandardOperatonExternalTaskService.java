@@ -758,7 +758,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         Map<String, String> extensionProperties = new LinkedHashMap<>();
         JsonNode extPropsNode = task.get("extensionProperties");
         if (extPropsNode != null && extPropsNode.isObject()) {
-            extPropsNode.fields().forEachRemaining(entry -> {
+            extPropsNode.properties().forEach(entry -> {
                 if (entry.getValue() != null && !entry.getValue().isNull()) {
                     extensionProperties.put(entry.getKey(), entry.getValue().asText());
                 }

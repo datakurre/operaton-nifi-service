@@ -238,12 +238,12 @@ def configure_nifi():
     standard_bundle = {
         "group": "org.apache.nifi",
         "artifact": "nifi-standard-nar",
-        "version": "2.4.0",
+        "version": "2.11.0",
     }
     update_attr_bundle = {
         "group": "org.apache.nifi",
         "artifact": "nifi-update-attribute-nar",
-        "version": "2.4.0",
+        "version": "2.11.0",
     }
 
     def create_p(name, ptype, bundle, x, y, props, auto_term=None):

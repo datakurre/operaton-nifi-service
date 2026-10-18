@@ -15,7 +15,7 @@ Prepare The Take
 
 Walkthrough BPMN Process In Cockpit
     Start Observer    operaton    ${OPERATON_URL}/app/cockpit/default/#/login
-    Chapter    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 1
+    Chapter    eyebrow=Operaton BPMN & Apache NiFi 2.11.0 · Part 1
     ...    title=Finnish Travel & Outdoor Adventure Planner
     ...    subtitle=BPMN 2.0 orchestration model & boundary error handling
     Log In To Operaton
@@ -56,7 +56,7 @@ Launch Trip In Tasklist
     Subtle Cursor Glide    1.0
 
 Observe NiFi Pipeline
-    [Setup]    Start Actor Turn    nifi    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 2
+    [Setup]    Start Actor Turn    nifi    eyebrow=Operaton BPMN & Apache NiFi 2.11.0 · Part 2
     ...    title=Real-Time Geocoding & Live FMI Weather
     ...    subtitle=Zooming into Column 1 & Column 2: Open-Meteo & Wikimedia open APIs
     ...    anonymous=${True}
@@ -64,7 +64,7 @@ Observe NiFi Pipeline
     Go To    ${NIFI_URL}/#/process-groups/${pg_id}
     Focus    actor    solo=${True}
     Wait Until Visible    \#canvas
-    Show Step    Apache NiFi 2.4.0: zooming into external task processors for real-time API orchestration    APACHE NIFI
+    Show Step    Apache NiFi 2.11.0: zooming into external task processors for real-time API orchestration    APACHE NIFI
     Zoom To NiFi Processor    Fetch Destination Task    0.85
     Show Step    Column 1: FetchAndLockExternalTasks acquires task lease from Operaton topic fin-trip-lookup    APACHE NIFI
     Zoom To NiFi Processor    Geocode Open-Meteo    0.85
@@ -95,7 +95,7 @@ Curate Trip In Tasklist
     Subtle Cursor Glide    1.5
 
 Observe Itinerary Compilation And Dispatch
-    [Setup]    Start Actor Turn    nifi    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 3
+    [Setup]    Start Actor Turn    nifi    eyebrow=Operaton BPMN & Apache NiFi 2.11.0 · Part 3
     ...    title=Gastronomy Mapping & Multichannel Dispatch
     ...    subtitle=Compiling Karjalanpiirakat & muikku dinner, PutEmail & PutFile archive
     ...    anonymous=${True}
@@ -123,7 +123,7 @@ Observe Itinerary Compilation And Dispatch
     [Teardown]    End Actor Turn
 
 Inspect Delivered Email In Mailpit
-    [Setup]    Start Actor Turn    mailpit    eyebrow=Operaton BPMN & Apache NiFi 2.4.0 · Part 4
+    [Setup]    Start Actor Turn    mailpit    eyebrow=Operaton BPMN & Apache NiFi 2.11.0 · Part 4
     ...    title=Delivered Itinerary in Mailpit
     ...    subtitle=Clean Markdown briefing delivered to local inbox
     ...    anonymous=${True}
@@ -137,9 +137,9 @@ Inspect Delivered Email In Mailpit
 
 Conclude Screencast
     Focus    observer    solo=${True}
-    Chapter    eyebrow=Operaton BPMN + Apache NiFi 2.4.0
+    Chapter    eyebrow=Operaton BPMN + Apache NiFi 2.11.0
     ...    title=Finnish Travel Planner Orchestrated Successfully
     ...    subtitle=Zero heavy AI, zero SQL, deterministic open APIs, and human-in-the-loop task curation
-    Show Step    Operaton BPMN + Apache NiFi 2.4.0: Reliable, deterministic, human-in-the-loop orchestration    OPERATON    duration=1.2
+    Show Step    Operaton BPMN + Apache NiFi 2.11.0: Reliable, deterministic, human-in-the-loop orchestration    OPERATON    duration=1.2
     Subtle Cursor Glide    2.0
     End Observer

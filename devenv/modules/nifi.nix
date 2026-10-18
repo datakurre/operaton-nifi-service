@@ -17,10 +17,10 @@ let
   # NiFi 2.x API, so the official binary distribution is packaged here.
   nifi = pkgs.stdenvNoCC.mkDerivation rec {
     pname = "nifi";
-    version = "2.4.0";
+    version = "2.11.0";
     src = pkgs.fetchurl {
       url = "https://archive.apache.org/dist/nifi/${version}/nifi-${version}-bin.zip";
-      sha512 = "a3de6ced74371bd8b1e95267c37dd526ef6d653c038e6a9e4a5f779ee767eb7eec1a5fd3cfcb0b764ce2b7c76e4f9f0dd848fa024796876340afb423fd1a81db";
+      sha512 = "2560bb76428a01d8b1e48a429dcedb92afd2d8aa7954f1838967ae63925c3b447cd913b213a0d13ecd051b008b744e49252c780c2fccb3868f81da9067a5a4dc";
     };
     nativeBuildInputs = [ pkgs.unzip ];
     installPhase = ''

@@ -2,7 +2,6 @@ package org.operaton.bpm.extension.nifi.processor;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -43,8 +42,7 @@ final class Variables {
             return MAPPER.writeValueAsBytes(typed);
         }
         ObjectNode simple = JsonNodeFactory.instance.objectNode();
-        for (Iterator<Map.Entry<String, JsonNode>> it = typed.fields(); it.hasNext(); ) {
-            Map.Entry<String, JsonNode> variable = it.next();
+        for (Map.Entry<String, JsonNode> variable : typed.properties()) {
             simple.set(variable.getKey(), toSimple(variable.getValue()));
         }
         return MAPPER.writeValueAsBytes(simple);
@@ -56,8 +54,7 @@ final class Variables {
     static String types(String typedJson) throws IOException {
         JsonNode typed = MAPPER.readTree(typedJson == null ? "{}" : typedJson);
         ObjectNode types = JsonNodeFactory.instance.objectNode();
-        for (Iterator<Map.Entry<String, JsonNode>> it = typed.fields(); it.hasNext(); ) {
-            Map.Entry<String, JsonNode> variable = it.next();
+        for (Map.Entry<String, JsonNode> variable : typed.properties()) {
             ObjectNode type = types.putObject(variable.getKey());
             type.put("type", variable.getValue().path("type").asText());
             JsonNode valueInfo = variable.getValue().get("valueInfo");
@@ -91,8 +88,7 @@ final class Variables {
         JsonNode types = typesJson == null || typesJson.isBlank()
                 ? JsonNodeFactory.instance.objectNode() : MAPPER.readTree(typesJson);
         ObjectNode typed = JsonNodeFactory.instance.objectNode();
-        for (Iterator<Map.Entry<String, JsonNode>> it = input.fields(); it.hasNext(); ) {
-            Map.Entry<String, JsonNode> variable = it.next();
+        for (Map.Entry<String, JsonNode> variable : input.properties()) {
             JsonNode original = types.get(variable.getKey());
             if (original != null && "File".equals(original.path("type").asText())) {
                 // File contents are not fetched, so the simple value cannot be written back.

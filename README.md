@@ -15,7 +15,7 @@ By implementing the **External Task Pattern**, it completely decouples business 
 - 🛡️ **BPMN Business Errors vs. Technical Failures**: Distinguish domain errors routed to BPMN boundary events (`HandleExternalTaskBpmnError`) from operational incidents with automatic retries and backoff (`HandleExternalTaskFailure`).
 - 🔄 **Simple JSON & Type Preservation**: Exchange intuitive, plain JSON payloads in NiFi FlowFiles while transparently preserving complex Java/BPMN data types (`Long`, `Date`, `Xml`, `Object`) across the round trip.
 - 🔐 **Enterprise Secrets with HashiCorp Vault**: Native NiFi Parameter Contexts backed by HashiCorp Vault KV-v2 (`HashiCorpVaultParameterProvider`), alongside OAuth2 Client Credentials, Bearer token, and Basic Auth.
-- 💻 **Complete Local Stack in Minutes**: Fully reproducible development environment via [devenv](https://devenv.sh) packaging Operaton 2.x, NiFi 2.4.0, HashiCorp Vault, and Mailpit.
+- 💻 **Complete Local Stack in Minutes**: Fully reproducible development environment via [devenv](https://devenv.sh) packaging Operaton 2.x, NiFi 2.11.0, HashiCorp Vault, and Mailpit.
 
 ---
 
@@ -64,7 +64,7 @@ flowchart LR
 
 ## 📸 Visual Showcase
 
-### Visual Dataflow Pipelines in Apache NiFi 2.4.0
+### Visual Dataflow Pipelines in Apache NiFi 2.11.0
 Build modular, self-documenting dataflow pipelines that subscribe to external task topics, enrich data from open APIs, and coordinate delivery:
 
 ![Apache NiFi Flow Canvas](docs/images/nifi-travel-canvas.png)
@@ -78,7 +78,7 @@ Monitor live process tokens, execution state, and historical instances in real t
 
 ## ⚡ Quickstart
 
-Launch the entire local stack (Operaton, NiFi 2.4.0, HashiCorp Vault, Mailpit, and automated preconfiguration):
+Launch the entire local stack (Operaton, NiFi 2.11.0, HashiCorp Vault, Mailpit, and automated preconfiguration):
 
 ```sh
 devenv up

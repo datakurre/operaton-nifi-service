@@ -2,7 +2,7 @@
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
 
-This hands-on tutorial guides you through building, configuring, and running an end-to-end event-driven orchestration pipeline pairing **Operaton BPMN 2.0** with **Apache NiFi 2.4.0**.
+This hands-on tutorial guides you through building, configuring, and running an end-to-end event-driven orchestration pipeline pairing **Operaton BPMN 2.0** with **Apache NiFi 2.11.0**.
 
 Through this walkthrough, you will learn how to:
 1. Model BPMN Service Tasks using **Operaton Element Templates**.
@@ -28,7 +28,7 @@ sequenceDiagram
     actor Traveler as Traveler (Ada Lovelace)
     participant Tasklist as Operaton Tasklist
     participant Engine as Operaton Engine
-    participant NiFi as Apache NiFi 2.4.0
+    participant NiFi as Apache NiFi 2.11.0
     participant Meteo as Open-Meteo APIs
     participant Wiki as Wikimedia REST API
     participant Mailpit as Mailpit (127.0.0.1:8025)

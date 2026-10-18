@@ -274,7 +274,7 @@ The service natively integrates with `HashiCorpVaultParameterProvider` to secure
 ### Local Development via `devenv`
 The project's `devenv.nix` provides a fully reproducible environment:
 ```sh
-devenv up -d         # Starts Operaton, NiFi 2.4.0, Vault, and preconfiguration
+devenv up -d         # Starts Operaton, NiFi 2.11.0, Vault, and preconfiguration
 devenv test          # Runs Maven unit test suite across all modules
 devenv shell -- build # Builds NAR archives under */*-nar/target/
 ```

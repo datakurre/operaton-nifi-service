@@ -467,7 +467,7 @@ def configure_vault_parameter_context(nifi_addr, vault_addr, vault_token, root_i
                     "bundle": {
                         "group": "org.apache.nifi",
                         "artifact": "nifi-hashicorp-vault-nar",
-                        "version": "2.4.0",
+                        "version": "2.11.0",
                     },
                     "properties": vault_props,
                 },
@@ -505,7 +505,7 @@ def configure_vault_parameter_context(nifi_addr, vault_addr, vault_token, root_i
                     "bundle": {
                         "group": "org.apache.nifi",
                         "artifact": "nifi-hashicorp-vault-nar",
-                        "version": "2.4.0",
+                        "version": "2.11.0",
                     },
                     "properties": provider_props,
                 },
@@ -691,12 +691,12 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
     standard_bundle = {
         "group": "org.apache.nifi",
         "artifact": "nifi-standard-nar",
-        "version": "2.4.0",
+        "version": "2.11.0",
     }
     update_attr_bundle = {
         "group": "org.apache.nifi",
         "artifact": "nifi-update-attribute-nar",
-        "version": "2.4.0",
+        "version": "2.11.0",
     }
 
     # --- Column 1 (x=80): Stage 1 - Order Validation & Enrichment (topic: demo) ---
@@ -1073,7 +1073,7 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
                         "bundle": {
                             "group": "org.apache.nifi",
                             "artifact": "nifi-hashicorp-vault-nar",
-                            "version": "2.4.0",
+                            "version": "2.11.0",
                         },
                         "properties": vault_props,
                     },
