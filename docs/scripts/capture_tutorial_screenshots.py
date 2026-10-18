@@ -399,7 +399,7 @@ def capture_all():
         page.goto(MAILPIT_URL, wait_until="load", timeout=20000)
         page.wait_for_timeout(3000)
         try:
-            mail_item = page.locator('.message, table tbody tr, .list-group-item, text="Finnish Adventure Guide"').first
+            mail_item = page.get_by_text("Finnish Adventure Guide").first
             if mail_item.is_visible():
                 mail_item.click()
                 page.wait_for_timeout(2000)

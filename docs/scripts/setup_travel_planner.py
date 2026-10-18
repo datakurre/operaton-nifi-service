@@ -729,7 +729,7 @@ def configure_nifi():
             "SMTP Hostname": "127.0.0.1",
             "SMTP Port": "1025",
             "SMTP Auth": "false",
-            "email-ff-content-as-message": "true",
+            "FlowFile Content as Message": "true",
             "From": "adventure@finland-travel.local",
             "To": "${emailTo}",
             "Subject": "Your Finnish Adventure Guide: ${destinationName}",
