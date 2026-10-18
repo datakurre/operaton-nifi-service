@@ -1,6 +1,8 @@
 package org.operaton.bpm.extension.nifi.processor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +29,7 @@ import org.apache.nifi.util.TestRunners;
 import org.junit.jupiter.api.Test;
 import org.operaton.bpm.extension.nifi.controller.ExternalTask;
 import org.operaton.bpm.extension.nifi.controller.OperatonException;
+import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 
 public class ExternalTaskProcessorsTest {
 
@@ -96,6 +99,33 @@ public class ExternalTaskProcessorsTest {
         runner.run();
 
         assertNull(service.lastCall().args().get(3));
+    }
+
+    @Test
+    public void testOnScheduledPrecomputesQueryAndOnStoppedClears() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        runner.setProperty(FetchAndLockExternalTasks.MAX_TASKS, "5");
+        runner.setProperty(FetchAndLockExternalTasks.LOCK_DURATION, "10 sec");
+        runner.setProperty(FetchAndLockExternalTasks.VARIABLES_FORMAT, VariablesFormat.TYPED.getValue());
+        runner.setProperty(FetchAndLockExternalTasks.BUSINESS_KEY, "bk-123");
+
+        FetchAndLockExternalTasks processor = (FetchAndLockExternalTasks) runner.getProcessor();
+        processor.onScheduled(runner.getProcessContext());
+
+        OperatonExternalTaskService.FetchAndLockQuery query = processor.getQuery();
+        assertNotNull(query);
+        assertEquals("orders", query.topicName());
+        assertEquals(5, query.maxTasks());
+        assertEquals(10000L, query.lockDuration());
+        assertEquals("bk-123", query.businessKey());
+        assertEquals(VariablesFormat.TYPED, processor.getVariablesFormat());
+        assertTrue(processor.isHasExtendedOptions());
+
+        processor.onStopped();
+        assertNull(processor.getQuery());
+        assertNull(processor.getVariablesFormat());
+        assertFalse(processor.isHasExtendedOptions());
     }
 
     @Test

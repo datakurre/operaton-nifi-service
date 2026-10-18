@@ -14,6 +14,8 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.annotation.lifecycle.OnScheduled;
+import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.ExpressionLanguageScope;
@@ -219,6 +221,10 @@ public class FetchAndLockExternalTasks extends AbstractProcessor
 
     private static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS);
 
+    private volatile OperatonExternalTaskService.FetchAndLockQuery query;
+    private volatile boolean hasExtendedOptions;
+    private volatile VariablesFormat variablesFormat;
+
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return PROPERTIES;
@@ -229,10 +235,8 @@ public class FetchAndLockExternalTasks extends AbstractProcessor
         return RELATIONSHIPS;
     }
 
-    @Override
-    public void onTrigger(final ProcessContext context, final ProcessSession session) {
-        OperatonExternalTaskService service =
-                context.getProperty(SERVICE).asControllerService(OperatonExternalTaskService.class);
+    @OnScheduled
+    public void onScheduled(final ProcessContext context) {
         String topicName = context.getProperty(TOPIC_NAME).evaluateAttributeExpressions().getValue();
         int maxTasks = context.getProperty(MAX_TASKS).evaluateAttributeExpressions().asInteger();
         long lockDuration = context.getProperty(LOCK_DURATION).evaluateAttributeExpressions()
@@ -241,7 +245,7 @@ public class FetchAndLockExternalTasks extends AbstractProcessor
                 context.getProperty(VARIABLES).evaluateAttributeExpressions().getValue());
         long asyncResponseTimeout = context.getProperty(LONG_POLLING_TIMEOUT)
                 .evaluateAttributeExpressions().asTimePeriod(TimeUnit.MILLISECONDS);
-        VariablesFormat format = context.getProperty(VARIABLES_FORMAT).asAllowableValue(VariablesFormat.class);
+        this.variablesFormat = context.getProperty(VARIABLES_FORMAT).asAllowableValue(VariablesFormat.class);
 
         boolean usePriority = context.getProperty(USE_PRIORITY).asBoolean();
         boolean localVariables = context.getProperty(LOCAL_VARIABLES).asBoolean();
@@ -258,25 +262,62 @@ public class FetchAndLockExternalTasks extends AbstractProcessor
         List<String> tenantIds = csvList(
                 context.getProperty(TENANT_IDS).evaluateAttributeExpressions().getValue());
 
-        boolean hasExtendedOptions = !usePriority || localVariables || !deserializeValues
+        this.hasExtendedOptions = !usePriority || localVariables || !deserializeValues
                 || includeExtensionProperties || businessKey != null
                 || processDefinitionId != null || processDefinitionKey != null
                 || processDefinitionVersionTag != null || withoutTenantId || tenantIds != null;
 
+        this.query = new OperatonExternalTaskService.FetchAndLockQuery(
+                topicName, maxTasks, lockDuration, variableNames, asyncResponseTimeout,
+                usePriority, localVariables, deserializeValues, includeExtensionProperties,
+                businessKey, processDefinitionId, null, processDefinitionKey, null,
+                processDefinitionVersionTag, withoutTenantId, tenantIds, null);
+    }
+
+    @OnStopped
+    public void onStopped() {
+        this.query = null;
+        this.hasExtendedOptions = false;
+        this.variablesFormat = null;
+    }
+
+    OperatonExternalTaskService.FetchAndLockQuery getQuery() {
+        return query;
+    }
+
+    boolean isHasExtendedOptions() {
+        return hasExtendedOptions;
+    }
+
+    VariablesFormat getVariablesFormat() {
+        return variablesFormat;
+    }
+
+    @Override
+    public void onTrigger(final ProcessContext context, final ProcessSession session) {
+        OperatonExternalTaskService service =
+                context.getProperty(SERVICE).asControllerService(OperatonExternalTaskService.class);
+        OperatonExternalTaskService.FetchAndLockQuery query = this.query;
+        VariablesFormat format = this.variablesFormat;
+        boolean hasExtendedOptions = this.hasExtendedOptions;
+        if (query == null) {
+            onScheduled(context);
+            query = this.query;
+            format = this.variablesFormat;
+            hasExtendedOptions = this.hasExtendedOptions;
+        }
+
         List<ExternalTask> tasks;
         try {
             if (hasExtendedOptions) {
-                tasks = service.fetchAndLock(new OperatonExternalTaskService.FetchAndLockQuery(
-                        topicName, maxTasks, lockDuration, variableNames, asyncResponseTimeout,
-                        usePriority, localVariables, deserializeValues, includeExtensionProperties,
-                        businessKey, processDefinitionId, null, processDefinitionKey, null,
-                        processDefinitionVersionTag, withoutTenantId, tenantIds, null));
+                tasks = service.fetchAndLock(query);
             } else {
                 tasks = service.fetchAndLock(
-                        topicName, maxTasks, lockDuration, variableNames, asyncResponseTimeout);
+                        query.topicName(), query.maxTasks(), query.lockDuration(),
+                        query.variables(), query.asyncResponseTimeout());
             }
         } catch (OperatonException e) {
-            getLogger().error("Failed to fetch and lock external tasks of topic {}", topicName, e);
+            getLogger().error("Failed to fetch and lock external tasks of topic {}", query.topicName(), e);
             context.yield();
             return;
         }
