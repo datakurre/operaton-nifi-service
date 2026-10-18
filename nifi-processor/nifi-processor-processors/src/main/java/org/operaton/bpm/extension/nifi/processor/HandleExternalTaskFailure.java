@@ -32,9 +32,9 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 })
 @WritesAttributes({
         @WritesAttribute(attribute = ExternalTaskAttributes.ERROR_STATUS,
-                description = "HTTP status of a failed request, 0 if none was received"),
+                description = "HTTP status of a failed or retried request, 0 if none was received"),
         @WritesAttribute(attribute = ExternalTaskAttributes.ERROR_MESSAGE,
-                description = "Error message of a failed request")
+                description = "Error message of a failed or retried request")
 })
 public class HandleExternalTaskFailure extends AbstractExternalTaskProcessor {
 

@@ -271,6 +271,67 @@ public class ExternalTaskProcessorsTest {
         MockFlowFile flowFile = runner.getFlowFilesForRelationship(AbstractExternalTaskProcessor.REL_FAILURE).get(0);
         flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_STATUS, "404");
         flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_MESSAGE, "not found");
+        assertTrue(flowFile.isPenalized());
+    }
+
+    @Test
+    public void testCompleteService503TransfersToRetry() throws Exception {
+        TestRunner runner = runner(CompleteExternalTask.class);
+        service.failure = new OperatonException("service unavailable", 503);
+
+        runner.enqueue("{}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_RETRY, 1);
+        MockFlowFile flowFile = runner.getFlowFilesForRelationship(AbstractExternalTaskProcessor.REL_RETRY).get(0);
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_STATUS, "503");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_MESSAGE, "service unavailable");
+        assertTrue(flowFile.isPenalized());
+    }
+
+    @Test
+    public void testCompleteService429TransfersToRetry() throws Exception {
+        TestRunner runner = runner(CompleteExternalTask.class);
+        service.failure = new OperatonException("too many requests", 429);
+
+        runner.enqueue("{}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_RETRY, 1);
+        MockFlowFile flowFile = runner.getFlowFilesForRelationship(AbstractExternalTaskProcessor.REL_RETRY).get(0);
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_STATUS, "429");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_MESSAGE, "too many requests");
+        assertTrue(flowFile.isPenalized());
+    }
+
+    @Test
+    public void testCompleteServiceNoResponseTransfersToRetry() throws Exception {
+        TestRunner runner = runner(CompleteExternalTask.class);
+        service.failure = new OperatonException("Connection refused", 0);
+
+        runner.enqueue("{}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_RETRY, 1);
+        MockFlowFile flowFile = runner.getFlowFilesForRelationship(AbstractExternalTaskProcessor.REL_RETRY).get(0);
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_STATUS, "0");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_MESSAGE, "Connection refused");
+        assertTrue(flowFile.isPenalized());
+    }
+
+    @Test
+    public void testCompleteService400TransfersToFailure() throws Exception {
+        TestRunner runner = runner(CompleteExternalTask.class);
+        service.failure = new OperatonException("bad request", 400);
+
+        runner.enqueue("{}", Map.of(ExternalTaskAttributes.ID, "task-1"));
+        runner.run();
+
+        runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_FAILURE, 1);
+        MockFlowFile flowFile = runner.getFlowFilesForRelationship(AbstractExternalTaskProcessor.REL_FAILURE).get(0);
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_STATUS, "400");
+        flowFile.assertAttributeEquals(ExternalTaskAttributes.ERROR_MESSAGE, "bad request");
+        assertTrue(flowFile.isPenalized());
     }
 
     @Test

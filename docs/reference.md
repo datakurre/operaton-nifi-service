@@ -131,7 +131,7 @@ Polls Operaton for external tasks matching a configured topic, acquires locks, a
 ### 3.2. CompleteExternalTask
 Completes an active external task in Operaton, passing variables from FlowFile content back to the process instance.
 
-- **Relationships**: `success` (task completed), `failure` (REST call or connection error).
+- **Relationships**: `success` (task completed), `retry` (transient failure: no response, HTTP 429 or 5xx), `failure` (permanent failure: 4xx, invalid input, etc.).
 - **Properties**:
 
 | Property | Default | Required | Description |
@@ -146,7 +146,7 @@ Completes an active external task in Operaton, passing variables from FlowFile c
 ### 3.3. HandleExternalTaskFailure
 Reports a technical failure to Operaton. Decrements the remaining retry count and, once retries reach 0, creates an incident in Operaton Cockpit.
 
-- **Relationships**: `success` (failure recorded), `failure` (error contacting Operaton).
+- **Relationships**: `success` (failure recorded), `retry` (transient error contacting Operaton), `failure` (permanent error contacting Operaton).
 - **Properties**:
 
 | Property | Default | Required | Description |
@@ -165,7 +165,7 @@ Reports a technical failure to Operaton. Decrements the remaining retry count an
 ### 3.4. HandleExternalTaskBpmnError
 Throws a domain/business error that is caught by an attached **BPMN Error Boundary Event** or Event Subprocess.
 
-- **Relationships**: `success` (error thrown), `failure` (error contacting Operaton).
+- **Relationships**: `success` (error thrown), `retry` (transient error contacting Operaton), `failure` (permanent error contacting Operaton).
 - **Properties**:
 
 | Property | Default | Required | Description |
@@ -181,7 +181,7 @@ Throws a domain/business error that is caught by an attached **BPMN Error Bounda
 ### 3.5. UnlockExternalTask
 Releases the lock on an external task without recording a failure or decrementing retries, allowing another worker node or pipeline to claim it immediately.
 
-- **Relationships**: `success`, `failure`.
+- **Relationships**: `success`, `retry` (transient error contacting Operaton), `failure` (permanent error contacting Operaton).
 - **Properties**:
 
 | Property | Default | Required | Description |
@@ -196,21 +196,21 @@ Releases the lock on an external task without recording a failure or decrementin
 ### Pattern 1: Standard Pipeline Execution
 ```
 FetchAndLockExternalTasks ──> [ Transform / API Call ] ──> CompleteExternalTask
-                                                                   │ (failure)
+                                                                   │ (retry / failure)
                                                                    ▼
                                                        HandleExternalTaskFailure
 ```
-Route the `failure` relationship of `CompleteExternalTask` directly to `HandleExternalTaskFailure` to guarantee that unexpected network blips during task completion trigger automatic retries.
+Route the `failure` and `retry` relationships of `CompleteExternalTask` directly to `HandleExternalTaskFailure` to guarantee that unexpected network blips or errors during task completion trigger automatic retries.
 
 ### Pattern 2: Domain Errors vs. Technical Incidents
 ```
 FetchAndLockExternalTasks ──> [ Business Validation ]
                                     ├── [Valid]   ──> CompleteExternalTask
-                                    │                        │ (failure)
+                                    │                        │ (retry / failure)
                                     │                        ▼
                                     │                HandleExternalTaskFailure
                                     └── [Invalid] ──> HandleExternalTaskBpmnError
-                                                             │ (failure)
+                                                             │ (retry / failure)
                                                              ▼
                                                      HandleExternalTaskFailure
 ```
@@ -246,7 +246,7 @@ FetchAndLockExternalTasks ──> [ Business Validation ]
 | `operaton.externalTask.variableTypes` | String | Internal type mapping for round-trip type preservation. |
 | `mime.type` | String | `application/json` |
 
-### Error Attributes Emitted on `failure`
+### Error Attributes Emitted on `failure` and `retry`
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |

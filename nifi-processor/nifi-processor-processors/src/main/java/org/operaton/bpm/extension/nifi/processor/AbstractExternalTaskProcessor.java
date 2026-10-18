@@ -45,13 +45,19 @@ public abstract class AbstractExternalTaskProcessor extends AbstractProcessor {
             .description("FlowFiles whose external task was handled successfully")
             .build();
 
+    public static final Relationship REL_RETRY = new Relationship.Builder()
+            .name("retry")
+            .description("FlowFiles whose request failed transiently (no response, HTTP 429 or 5xx) "
+                    + "and may succeed if retried; see the " + ExternalTaskAttributes.ERROR_MESSAGE + " attribute")
+            .build();
+
     public static final Relationship REL_FAILURE = new Relationship.Builder()
             .name("failure")
             .description("FlowFiles that could not be handled; see the "
                     + ExternalTaskAttributes.ERROR_MESSAGE + " attribute")
             .build();
 
-    private static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_RETRY, REL_FAILURE);
 
     @Override
     public Set<Relationship> getRelationships() {
@@ -70,6 +76,8 @@ public abstract class AbstractExternalTaskProcessor extends AbstractProcessor {
 
         int status = 0;
         String message;
+        boolean transientError = false;
+        Exception failureException;
         try {
             if (taskId == null || taskId.isBlank()) {
                 throw new IllegalArgumentException("External task id is empty");
@@ -79,22 +87,27 @@ public abstract class AbstractExternalTaskProcessor extends AbstractProcessor {
             session.transfer(flowFile, REL_SUCCESS);
             return;
         } catch (OperatonException e) {
+            failureException = e;
             status = e.getStatusCode();
             message = e.getMessage();
+            if (status == 0 || status == 429 || status >= 500) {
+                transientError = true;
+            }
         } catch (Exception e) {
+            failureException = e;
             message = e.getMessage() == null ? e.toString() : e.getMessage();
         }
 
-        getLogger().error("Failed to handle external task {} for {}: {}", taskId, flowFile, message);
+        getLogger().error("Failed to handle external task {} for {}: {}", taskId, flowFile, message, failureException);
         Map<String, String> attributes = new HashMap<>();
         attributes.put(ExternalTaskAttributes.ERROR_STATUS, String.valueOf(status));
         attributes.put(ExternalTaskAttributes.ERROR_MESSAGE, message);
         flowFile = session.putAllAttributes(flowFile, attributes);
-        session.transfer(session.penalize(flowFile), REL_FAILURE);
+        session.transfer(session.penalize(flowFile), transientError ? REL_RETRY : REL_FAILURE);
     }
 
     /**
-     * Act on the external task. Throwing transfers the FlowFile to failure.
+     * Act on the external task. Throwing transfers the FlowFile to retry or failure.
      */
     protected abstract void handle(ProcessContext context, ProcessSession session, FlowFile flowFile,
                                    OperatonExternalTaskService service, String taskId)

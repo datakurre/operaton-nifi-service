@@ -377,7 +377,7 @@ def configure_nifi():
             "External Task Service": operaton_svc_id,
             "Variables Format": "SIMPLE",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
     p_err_geo = create_p(
         "Handle Unknown Destination",
@@ -389,7 +389,7 @@ def configure_nifi():
             "Error Code": "UNKNOWN_DESTINATION",
             "Error Message": "Could not resolve Finnish destination location for: ${search.city}",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
 
     connect(p_fetch_geo, p_extract_trip, ["success"])
@@ -437,7 +437,7 @@ def configure_nifi():
             "External Task Service": operaton_svc_id,
             "Variables Format": "NONE",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
     connect(p_fetch_fallback, p_email_fallback, ["success"])
     connect(p_email_fallback, p_complete_fallback, ["success"])
@@ -555,7 +555,7 @@ def configure_nifi():
             "External Task Service": operaton_svc_id,
             "Variables Format": "SIMPLE",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
 
     connect(p_fetch_weather, p_extract_coords, ["success"])
@@ -662,7 +662,7 @@ def configure_nifi():
             "External Task Service": operaton_svc_id,
             "Variables Format": "SIMPLE",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
 
     connect(p_fetch_compile, p_extract_user, ["success"])
@@ -756,7 +756,7 @@ def configure_nifi():
             "External Task Service": operaton_svc_id,
             "Variables Format": "NONE",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
 
     connect(p_fetch_dispatch, p_extract_dispatch, ["success"])

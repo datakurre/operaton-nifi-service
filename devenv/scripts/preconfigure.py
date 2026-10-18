@@ -909,7 +909,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
             "Default Retries": "3",
             "Retry Timeout": "1 min",
         },
-        auto_term=["success", "failure"],
+        auto_term=["success", "failure", "retry"],
     )
 
     # Connect Column 1
@@ -923,7 +923,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         root_id,
         bpmn_validation_error,
         handle_failure,
-        ["failure"],
+        ["failure", "retry"],
         bends=[{"x": 480, "y": 1090}],
     )
     _connect(
@@ -931,7 +931,7 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
         root_id,
         complete_validate,
         handle_failure,
-        ["failure"],
+        ["failure", "retry"],
         bends=[{"x": 760, "y": 890}],
     )
 
@@ -940,20 +940,20 @@ def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=F
     _connect(nifi_addr, root_id, eval_fraud_json, route_fraud, ["matched"])
     _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
     _connect(nifi_addr, root_id, route_fraud, bpmn_fraud_error, ["fraud_suspected"])
-    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure"])
+    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure", "retry"])
     _connect(
         nifi_addr,
         root_id,
         bpmn_fraud_error,
         handle_failure,
-        ["failure"],
+        ["failure", "retry"],
         bends=[{"x": 980, "y": 1090}],
     )
 
     # Connect Column 3 & Failure Handling
     _connect(nifi_addr, root_id, fetch_payment, complete_fulfillment, ["success"])
     _connect(nifi_addr, root_id, fetch_shipment, complete_fulfillment, ["success"])
-    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure"])
+    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure", "retry"])
 
     print("Created 3-stage Order Fulfillment & Fraud Compliance flow in NiFi.")
 
