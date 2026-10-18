@@ -14,7 +14,7 @@ By implementing the **External Task Pattern**, it completely decouples business 
 - ⏱️ **Automatic Background Lock Extension**: Built-in background lease renewal ensures tasks never time out during long-running ETL jobs, batch database updates, or slow third-party API calls—without modifying flow logic.
 - 🛡️ **BPMN Business Errors vs. Technical Failures**: Distinguish domain errors routed to BPMN boundary events (`HandleExternalTaskBpmnError`) from operational incidents with automatic retries and backoff (`HandleExternalTaskFailure`).
 - 🔄 **Simple JSON & Type Preservation**: Exchange intuitive, plain JSON payloads in NiFi FlowFiles while transparently preserving complex Java/BPMN data types (`Long`, `Date`, `Xml`, `Object`) across the round trip.
-- 🔐 **Enterprise Secrets with HashiCorp Vault**: Native NiFi Parameter Contexts backed by HashiCorp Vault KV-v2 (`HashiCorpVaultParameterProvider`), alongside OAuth2 Client Credentials, Bearer token, and Basic Auth.
+- 🔐 **Enterprise Secrets & Authentication**: Native NiFi Parameter Contexts backed by HashiCorp Vault KV-v2 (`HashiCorpVaultParameterProvider`), alongside managed OAuth2 access tokens via `StandardOauth2AccessTokenProvider`, static Bearer tokens, and HTTP Basic Auth.
 - 💻 **Complete Local Stack in Minutes**: Fully reproducible development environment via [devenv](https://devenv.sh) packaging Operaton 2.x, NiFi 2.11.0, HashiCorp Vault, and Mailpit.
 
 ---
@@ -89,6 +89,21 @@ Once running, access the local services:
 - **Apache NiFi**: [http://127.0.0.1:8081/nifi/](http://127.0.0.1:8081/nifi/)
 - **HashiCorp Vault UI**: [http://127.0.0.1:8200](http://127.0.0.1:8200)
 - **Mailpit Web UI**: [http://127.0.0.1:8025](http://127.0.0.1:8025)
+
+### 🔐 Authentication Options
+
+Requests to Operaton REST API can be authenticated via:
+- **OAuth2 Access Token Provider (Recommended)**: Use NiFi's `StandardOauth2AccessTokenProvider` controller service configured with:
+  - **Grant Type**: `client_credentials`
+  - **Authorization Server URL**: token endpoint URL (e.g. `https://auth.example.com/oauth/token`)
+  - **Client ID** & **Client Secret**
+  - **Scope** *(optional)*
+- **HTTP Basic**: Username and optional password.
+- **Bearer Token**: Static Bearer / JWT token.
+- **None**: Unauthenticated.
+
+> [!NOTE]
+> Direct built-in OAuth2 Client Credentials properties on `StandardOperatonExternalTaskService` are deprecated in favor of `StandardOauth2AccessTokenProvider`.
 
 ---
 

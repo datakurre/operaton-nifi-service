@@ -19,7 +19,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * Manages OAuth2 access tokens acquired via client_credentials grant.
  * Fetches tokens on demand, caches them until near expiration, and refreshes them transparently.
+ *
+ * @deprecated Use NiFi's {@code StandardOauth2AccessTokenProvider} service instead.
  */
+@Deprecated
 public class OAuth2TokenManager {
 
     public static final Duration DEFAULT_REFRESH_WINDOW = Duration.ofSeconds(30);

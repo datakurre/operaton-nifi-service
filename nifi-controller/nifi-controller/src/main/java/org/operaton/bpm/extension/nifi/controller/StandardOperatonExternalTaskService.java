@@ -111,29 +111,44 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER)
             .build();
 
+    /**
+     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
+     */
+    @Deprecated
     public static final PropertyDescriptor OAUTH2_TOKEN_ENDPOINT = new PropertyDescriptor.Builder()
             .name("OAuth2 Token Endpoint")
             .description("OAuth2 Token Endpoint URL for service account authentication via client_credentials grant, "
                     + "e.g. https://auth.example.com/oauth/token. When configured along with Client ID and Secret, "
-                    + "tokens are automatically fetched, cached, and refreshed before expiration.")
+                    + "tokens are automatically fetched, cached, and refreshed before expiration. "
+                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
             .required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.URL_VALIDATOR)
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
+    /**
+     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
+     */
+    @Deprecated
     public static final PropertyDescriptor OAUTH2_CLIENT_ID = new PropertyDescriptor.Builder()
             .name("OAuth2 Client ID")
-            .description("OAuth2 Client ID for service account authentication")
+            .description("OAuth2 Client ID for service account authentication. "
+                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
             .required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
+    /**
+     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
+     */
+    @Deprecated
     public static final PropertyDescriptor OAUTH2_CLIENT_SECRET = new PropertyDescriptor.Builder()
             .name("OAuth2 Client Secret")
-            .description("OAuth2 Client Secret for service account authentication")
+            .description("OAuth2 Client Secret for service account authentication. "
+                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
             .required(true)
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
@@ -141,9 +156,14 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
+    /**
+     * @deprecated Use {@link #OAUTH2_ACCESS_TOKEN_PROVIDER} with a {@code StandardOauth2AccessTokenProvider} instead.
+     */
+    @Deprecated
     public static final PropertyDescriptor OAUTH2_SCOPE = new PropertyDescriptor.Builder()
             .name("OAuth2 Scope")
-            .description("Optional scope(s) for OAuth2 client_credentials token requests")
+            .description("Optional scope(s) for OAuth2 client_credentials token requests. "
+                    + "(Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider)")
             .required(false)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
@@ -313,6 +333,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 }
             }
             case OAUTH2_CLIENT_CREDENTIALS -> {
+                getLogger().warn("Authentication Strategy OAuth2 Client Credentials is deprecated; use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider instead");
                 String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
                 String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
                 String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();

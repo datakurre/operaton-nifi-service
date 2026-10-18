@@ -11,7 +11,7 @@ public enum AuthenticationStrategy implements DescribedValue {
     BASIC("HTTP Basic", "HTTP Basic authentication using username and password"),
     BEARER("Bearer Token", "Static Bearer token authentication using an Authorization header"),
     OAUTH2_PROVIDER("OAuth2 Access Token Provider", "OAuth2 access tokens managed by a controller service"),
-    OAUTH2_CLIENT_CREDENTIALS("OAuth2 Client Credentials", "OAuth2 service account authentication via client_credentials grant");
+    OAUTH2_CLIENT_CREDENTIALS("OAuth2 Client Credentials", "Deprecated: use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider");
 
     private final String displayName;
     private final String description;
