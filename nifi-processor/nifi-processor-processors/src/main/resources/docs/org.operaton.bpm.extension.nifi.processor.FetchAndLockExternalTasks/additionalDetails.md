@@ -14,7 +14,7 @@ Downstream processors can transform or inspect the variables before sending the 
 
 The **Variables Format** property controls how process variables are serialized into FlowFile content:
 
-- **`JsonFlat`** (Default): Variables are formatted as a direct JSON key-value object:
+- **`Simple JSON` (`SIMPLE`)** (Default): Variables are formatted as a direct JSON key-value object:
   ```json
   {
     "orderId": "12345",
@@ -27,7 +27,7 @@ The **Variables Format** property controls how process variables are serialized 
   ```
   This format is directly consumable by standard NiFi JSON processors such as `JSLTTransformJSON`, `EvaluateJsonPath`, `SplitJson`, and `QueryRecord`.
 
-- **`JsonTyped`**: Variables are formatted in the Operaton REST API typed representation:
+- **`Operaton Typed JSON` (`TYPED`)**: Variables are formatted in the Operaton REST API typed representation:
   ```json
   {
     "orderId": {"type": "String", "value": "12345", "valueInfo": {}},
@@ -52,19 +52,27 @@ Each FlowFile emitted to `success` contains the following attributes:
 
 | Attribute Name | Description |
 |---|---|
-| `operaton.id` | The unique External Task ID in Operaton |
-| `operaton.topic` | Topic name of the external task |
-| `operaton.worker.id` | Worker ID that locked the task |
-| `operaton.process.instance.id` | Process Instance ID |
-| `operaton.process.definition.id` | Process Definition ID |
-| `operaton.process.definition.key` | Process Definition Key |
-| `operaton.activity.id` | BPMN activity ID of the service task |
-| `operaton.execution.id` | Execution ID |
-| `operaton.retries` | Remaining retry count |
-| `operaton.lock.expiration.time` | Lock expiration timestamp (ISO 8601) |
-| `operaton.business.key` | Business key of the process instance (if present) |
-| `operaton.tenant.id` | Tenant ID (if multi-tenancy is used) |
-| `operaton.priority` | Task priority |
+| `operaton.externalTask.id` | The unique External Task ID in Operaton |
+| `operaton.externalTask.topicName` | Topic name of the external task |
+| `operaton.externalTask.workerId` | Worker ID that locked the task |
+| `operaton.externalTask.activityId` | BPMN activity ID of the service task |
+| `operaton.externalTask.activityInstanceId` | Activity instance ID |
+| `operaton.externalTask.executionId` | Execution ID |
+| `operaton.externalTask.processInstanceId` | Process Instance ID |
+| `operaton.externalTask.processDefinitionId` | Process Definition ID |
+| `operaton.externalTask.processDefinitionKey` | Process Definition Key |
+| `operaton.externalTask.processDefinitionVersionTag` | Process Definition Version Tag (if present) |
+| `operaton.externalTask.businessKey` | Business key of the process instance (if present) |
+| `operaton.externalTask.tenantId` | Tenant ID (if multi-tenancy is used) |
+| `operaton.externalTask.retries` | Remaining retry count |
+| `operaton.externalTask.priority` | Task priority |
+| `operaton.externalTask.createTime` | Task creation timestamp |
+| `operaton.externalTask.lockExpirationTime` | Lock expiration timestamp (ISO 8601) |
+| `operaton.externalTask.errorMessage` | Last reported error message (if any) |
+| `operaton.externalTask.errorDetails` | Last reported error details (if any) |
+| `operaton.externalTask.variableTypes` | Original Operaton variable types (Simple JSON format) |
+| `operaton.externalTask.extensionProperty.<name>` | BPMN extension properties (when Include Extension Properties is true) |
+| `mime.type` | Set to `application/json` |
 
 ## Scheduling and Polling Guidance
 
