@@ -27,12 +27,24 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import java.io.InputStream;
 import java.net.Proxy;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
+import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsParameters;
+import com.sun.net.httpserver.HttpsServer;
+import org.junit.jupiter.api.io.TempDir;
 
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.ConfigVerificationResult.Outcome;
@@ -786,20 +798,140 @@ public class TestStandardOperatonExternalTaskService {
         assertEquals("/engine-rest/external-task/task-1/extendLock", lastRequest().path());
     }
 
-    @Test
-    public void testEnableAndRequestWithSSLContextService() throws Exception {
-        MockSSLContextProvider sslProvider = new MockSSLContextProvider();
-        runner.addControllerService("ssl-provider", sslProvider);
-        runner.enableControllerService(sslProvider);
-        runner.setProperty(service, StandardOperatonExternalTaskService.SSL_CONTEXT_SERVICE, "ssl-provider");
-        runner.assertValid(service);
-        runner.enableControllerService(service);
+    private static void generateSelfSignedKeystore(Path keystorePath, String password) throws Exception {
+        String keytoolPath = Paths.get(System.getProperty("java.home"), "bin", "keytool").toString();
+        ProcessBuilder pb = new ProcessBuilder(
+                keytoolPath,
+                "-genkeypair",
+                "-alias", "localhost",
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "1",
+                "-keystore", keystorePath.toAbsolutePath().toString(),
+                "-storetype", "PKCS12",
+                "-storepass", password,
+                "-keypass", password,
+                "-dname", "CN=localhost",
+                "-ext", "SAN=dns:localhost,ip:127.0.0.1"
+        );
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            throw new IllegalStateException("keytool failed with exit code " + exitCode + ": " + output);
+        }
+    }
 
-        responseStatus = 200;
-        responseBody = "[]";
-        List<ExternalTask> tasks = service.fetchAndLock("demo", 10, 60000L, null, 0L);
-        assertNotNull(tasks);
-        assertEquals(0, tasks.size());
+    @Test
+    public void testEnableAndRequestWithSSLContextService(@TempDir Path tempDir) throws Exception {
+        Path keystorePath = tempDir.resolve("keystore.p12");
+        String password = "password";
+        generateSelfSignedKeystore(keystorePath, password);
+
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (InputStream in = Files.newInputStream(keystorePath)) {
+            ks.load(in, password.toCharArray());
+        }
+
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, password.toCharArray());
+        SSLContext serverSslContext = SSLContext.getInstance("TLS");
+        serverSslContext.init(kmf.getKeyManagers(), null, null);
+
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(ks);
+        SSLContext clientSslContext = SSLContext.getInstance("TLS");
+        clientSslContext.init(null, tmf.getTrustManagers(), null);
+
+        HttpsServer httpsServer = HttpsServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        httpsServer.setHttpsConfigurator(new HttpsConfigurator(serverSslContext) {
+            @Override
+            public void configure(HttpsParameters params) {
+                params.setSSLParameters(serverSslContext.getDefaultSSLParameters());
+            }
+        });
+        httpsServer.createContext("/engine-rest", exchange -> {
+            byte[] out = "[]".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        httpsServer.start();
+
+        try {
+            MockSSLContextProvider sslProvider = new MockSSLContextProvider(clientSslContext);
+            runner.addControllerService("ssl-provider", sslProvider);
+            runner.enableControllerService(sslProvider);
+            runner.setProperty(service, StandardOperatonExternalTaskService.SSL_CONTEXT_SERVICE, "ssl-provider");
+            runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL,
+                    "https://localhost:" + httpsServer.getAddress().getPort() + "/engine-rest/");
+            runner.assertValid(service);
+            runner.enableControllerService(service);
+
+            List<ExternalTask> tasks = service.fetchAndLock("demo", 10, 60000L, null, 0L);
+            assertNotNull(tasks);
+            assertEquals(0, tasks.size());
+        } finally {
+            httpsServer.stop(0);
+        }
+    }
+
+    @Test
+    public void testRequestFailsWithoutSSLContextServiceAgainstHttpsServer(@TempDir Path tempDir) throws Exception {
+        Path keystorePath = tempDir.resolve("keystore.p12");
+        String password = "password";
+        generateSelfSignedKeystore(keystorePath, password);
+
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (InputStream in = Files.newInputStream(keystorePath)) {
+            ks.load(in, password.toCharArray());
+        }
+
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, password.toCharArray());
+        SSLContext serverSslContext = SSLContext.getInstance("TLS");
+        serverSslContext.init(kmf.getKeyManagers(), null, null);
+
+        HttpsServer httpsServer = HttpsServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        httpsServer.setHttpsConfigurator(new HttpsConfigurator(serverSslContext) {
+            @Override
+            public void configure(HttpsParameters params) {
+                params.setSSLParameters(serverSslContext.getDefaultSSLParameters());
+            }
+        });
+        httpsServer.createContext("/engine-rest", exchange -> {
+            byte[] out = "[]".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        httpsServer.start();
+
+        try {
+            runner.removeProperty(service, StandardOperatonExternalTaskService.SSL_CONTEXT_SERVICE);
+            runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL,
+                    "https://localhost:" + httpsServer.getAddress().getPort() + "/engine-rest/");
+            runner.assertValid(service);
+            runner.enableControllerService(service);
+
+            OperatonException e = assertThrows(OperatonException.class,
+                    () -> service.fetchAndLock("demo", 10, 60000L, null, 0L));
+            Throwable cause = e;
+            boolean hasSslException = false;
+            while (cause != null) {
+                if (cause instanceof SSLHandshakeException) {
+                    hasSslException = true;
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            assertTrue(hasSslException, "Expected SSLHandshakeException in cause chain but got: " + e.getMessage());
+        } finally {
+            httpsServer.stop(0);
+        }
     }
 
     @Test
@@ -983,8 +1115,21 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     public static class MockSSLContextProvider extends AbstractControllerService implements SSLContextProvider {
+        private final SSLContext sslContext;
+
+        public MockSSLContextProvider() {
+            this(null);
+        }
+
+        public MockSSLContextProvider(SSLContext sslContext) {
+            this.sslContext = sslContext;
+        }
+
         @Override
         public SSLContext createContext() {
+            if (sslContext != null) {
+                return sslContext;
+            }
             try {
                 return SSLContext.getDefault();
             } catch (NoSuchAlgorithmException e) {
