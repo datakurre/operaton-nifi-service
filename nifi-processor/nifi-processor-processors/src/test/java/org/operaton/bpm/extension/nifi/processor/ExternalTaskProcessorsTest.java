@@ -16,6 +16,7 @@ import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import org.apache.nifi.annotation.configuration.DefaultSettings;
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.ConfigVerificationResult.Outcome;
 import org.apache.nifi.processor.ProcessContext;
@@ -609,5 +610,12 @@ public class ExternalTaskProcessorsTest {
         assertEquals(1, runner.getProvenanceEvents().size());
         assertEquals("http://localhost:8080/engine-rest/external-task/task-1",
                 runner.getProvenanceEvents().get(0).getTransitUri());
+    }
+
+    @Test
+    public void testDefaultSettingsAnnotation() {
+        DefaultSettings defaultSettings = FetchAndLockExternalTasks.class.getAnnotation(DefaultSettings.class);
+        assertNotNull(defaultSettings);
+        assertEquals("5 sec", defaultSettings.yieldDuration());
     }
 }

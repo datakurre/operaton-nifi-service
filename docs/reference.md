@@ -100,6 +100,7 @@ Polls Operaton for external tasks matching a configured topic, acquires locks, a
 
 - **Input / Output**: Does not accept incoming connections. Generates FlowFiles on `success`.
 - **Relationships**: `success` (locked tasks emitted as FlowFiles).
+- **Default Settings**: Yield Duration: `5 sec` (when no tasks are available or an error occurs, the processor yields for 5 seconds before polling Operaton again).
 - **Properties**:
 
 | Property | Default | Required | Description |

@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
+import org.apache.nifi.annotation.configuration.DefaultSettings;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
@@ -35,6 +36,7 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
 
 @Tags({"operaton", "bpmn", "external task", "workflow", "fetch", "lock"})
 @InputRequirement(InputRequirement.Requirement.INPUT_FORBIDDEN)
+@DefaultSettings(yieldDuration = "5 sec")
 @CapabilityDescription("Fetches and locks Operaton external tasks of a topic and emits one FlowFile "
         + "per task with the fetched process variables as JSON content. Finish each task with "
         + "CompleteExternalTask, HandleExternalTaskFailure or HandleExternalTaskBpmnError before "
