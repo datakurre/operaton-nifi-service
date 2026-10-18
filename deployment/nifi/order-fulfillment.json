@@ -2089,6 +2089,43 @@
         "loadBalanceCompression": "DO_NOT_COMPRESS",
         "componentType": "CONNECTION",
         "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "7cd06896-2c83-427d-956d-604fc16cf19f",
+        "source": {
+          "id": "d803f56c-2aad-3d0b-ae83-85c0411be618",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleFraudBpmnError",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [
+          {
+            "x": 980.0,
+            "y": 1090.0
+          }
+        ],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
       }
     ],
     "labels": [],

@@ -173,17 +173,22 @@ def capture_all():
 
         # Open the configure dialog for StandardOperatonExternalTaskService
         try:
-            # Click edit / pencil / gear icon on StandardOperatonExternalTaskService
             row = page.locator('tr:has-text("StandardOperatonExternalTaskService")').first
             if row.is_visible():
-                edit_btn = row.locator('.fa-pencil, .fa-gear, button[title="Configure"], button[title="Edit"]').first
-                if edit_btn.is_visible():
-                    edit_btn.click()
+                action_btn = row.locator('button').last
+                if action_btn.is_visible():
+                    action_btn.click()
+                    page.wait_for_timeout(500)
+                    edit_opt = page.locator('button:has-text("Edit"), [role="menuitem"]:has-text("Edit"), .context-menu-item:has-text("Edit")').first
+                    if edit_opt.is_visible():
+                        edit_opt.click()
+                    else:
+                        row.dblclick(force=True)
                 else:
-                    row.dblclick()
+                    row.dblclick(force=True)
                 page.wait_for_timeout(1500)
                 # Click Properties tab
-                prop_tab = page.locator('.tab:has-text("Properties"), button:has-text("Properties"), li:has-text("Properties")').first
+                prop_tab = page.locator('[role="tab"]:has-text("Properties"), .mdc-tab:has-text("Properties"), .tab:has-text("Properties"), button:has-text("Properties"), li:has-text("Properties")').first
                 if prop_tab.is_visible():
                     prop_tab.click()
                 page.wait_for_timeout(1500)
@@ -214,13 +219,19 @@ def capture_all():
         try:
             row = page.locator('tr:has-text("operaton")').first
             if row.is_visible():
-                edit_btn = row.locator('.fa-pencil, .fa-gear, button[title="Configure"], button[title="Edit"]').first
-                if edit_btn.is_visible():
-                    edit_btn.click()
+                action_btn = row.locator('button').last
+                if action_btn.is_visible():
+                    action_btn.click()
+                    page.wait_for_timeout(500)
+                    edit_opt = page.locator('button:has-text("Edit"), [role="menuitem"]:has-text("Edit"), .context-menu-item:has-text("Edit")').first
+                    if edit_opt.is_visible():
+                        edit_opt.click()
+                    else:
+                        row.dblclick(force=True)
                 else:
-                    row.dblclick()
+                    row.dblclick(force=True)
                 page.wait_for_timeout(1500)
-                prop_tab = page.locator('.tab:has-text("Parameters"), button:has-text("Parameters")').first
+                prop_tab = page.locator('[role="tab"]:has-text("Parameters"), .mdc-tab:has-text("Parameters"), .tab:has-text("Parameters"), button:has-text("Parameters")').first
                 if prop_tab.is_visible():
                     prop_tab.click()
                 page.wait_for_timeout(1500)
@@ -388,10 +399,13 @@ def capture_all():
         page.goto(MAILPIT_URL, wait_until="load", timeout=20000)
         page.wait_for_timeout(3000)
         try:
-            mail_item = page.locator('text="Your Finnish Adventure Guide"').first
+            mail_item = page.locator('.message, table tbody tr, .list-group-item, text="Finnish Adventure Guide"').first
             if mail_item.is_visible():
                 mail_item.click()
                 page.wait_for_timeout(2000)
+                preview = page.locator('#message-view, .message-body, iframe, #preview-html').first
+                if preview.is_visible():
+                    page.wait_for_timeout(1000)
         except Exception as e:
             print(f"Notice clicking Mailpit email: {e}")
 

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://gitlab.com/vasara-bpm/vscode-operaton-bpmn-js-modeler/-/jobs/artifacts/v0.9.1/raw/operaton-element-templates-schema-v0.9.1.json?job=release",
+  "name": "Operaton External Task",
+  "id": "org.operaton.bpm.extension.nifi.external-task",
+  "version": 1,
+  "description": "Configures a BPMN Service Task to execute as an Operaton External Task processed by Apache NiFi.",
+  "appliesTo": [
+    "bpmn:ServiceTask"
+  ],
+  "elementType": {
+    "value": "bpmn:ServiceTask"
+  },
+  "properties": [
+    {
+      "label": "Topic Name",
+      "type": "String",
+      "value": "fin-trip-lookup",
+      "binding": {
+        "type": "property",
+        "name": "camunda:topic"
+      },
+      "constraints": {
+        "notEmpty": true
+      }
+    },
+    {
+      "label": "Task Priority",
+      "type": "String",
+      "value": "50",
+      "binding": {
+        "type": "property",
+        "name": "camunda:taskPriority"
+      }
+    },
+    {
+      "label": "Variables Format",
+      "type": "Dropdown",
+      "value": "Simple JSON",
+      "choices": [
+        {
+          "name": "Simple JSON",
+          "value": "Simple JSON"
+        },
+        {
+          "name": "Operaton Typed JSON",
+          "value": "Operaton Typed JSON"
+        }
+      ],
+      "binding": {
+        "type": "camunda:property",
+        "name": "variablesFormat"
+      }
+    },
+    {
+      "label": "Extension Action",
+      "type": "String",
+      "binding": {
+        "type": "camunda:property",
+        "name": "action"
+      }
+    }
+  ]
+}

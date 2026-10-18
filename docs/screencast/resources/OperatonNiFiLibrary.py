@@ -188,12 +188,19 @@ class OperatonNiFiLibrary:
     def reset_nifi_canvas_zoom(self):
         """Resets NiFi canvas zoom to show the full pipeline."""
         page = self._get_page()
-        page.evaluate("""() => {
-            const canvas = document.querySelector("#canvas");
-            canvas.style.transition = "transform 0.45s ease-out";
-            canvas.setAttribute("transform", "translate(-16.67, 4.17) scale(0.52)");
-        }""")
-        page.wait_for_timeout(500)
+        fit_btn = page.locator('button[title="Fit"], button:has(.fa-expand)').first
+        if fit_btn.is_visible():
+            fit_btn.click()
+            page.wait_for_timeout(500)
+        else:
+            page.evaluate("""() => {
+                const canvas = document.querySelector("#canvas");
+                if (canvas) {
+                    canvas.style.transition = "transform 0.45s ease-out";
+                    canvas.setAttribute("transform", "translate(40, 20) scale(0.38)");
+                }
+            }""")
+            page.wait_for_timeout(500)
 
     @keyword
     def configure_operaton_local_storage(self):
@@ -331,7 +338,7 @@ class OperatonNiFiLibrary:
             raise RuntimeError("Finnish Travel Planner process group not found")
 
     @keyword
-    def log_in_to_operaton_tasklist(self, username="admin", password="admin"):
+    def log_in_to_operaton_tasklist(self, username="demo", password="demo"):
         """Logs into Operaton Tasklist."""
         page = self._get_page()
         page.goto("http://127.0.0.1:8080/operaton/app/tasklist/default/#/login")
