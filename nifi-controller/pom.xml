@@ -30,8 +30,6 @@
 
     <properties>
         <nifi.version>2.11.0</nifi.version>
-        <!-- nifi-extension-bundles forbids SNAPSHOT dependencies outside of Apache NiFi -->
-        <enforcer.skip>true</enforcer.skip>
     </properties>
 
     <modules>
@@ -40,5 +38,34 @@
         <module>nifi-controller</module>
         <module>nifi-controller-nar</module>
     </modules>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-maven-version</id>
+                        <configuration>
+                            <rules>
+                                <!-- nifi-extension-bundles forbids non-Apache SNAPSHOT dependencies; allow project SNAPSHOT modules -->
+                                <requireReleaseDeps>
+                                    <message>Dependencies outside of Apache NiFi must not use SNAPSHOT versions</message>
+                                    <failWhenParentIsSnapshot>false</failWhenParentIsSnapshot>
+                                    <excludes>
+                                        <exclude>org.apache.nifi:*</exclude>
+                                        <exclude>org.apache.nifi.minifi:*</exclude>
+                                        <exclude>org.apache.nifi.registry:*</exclude>
+                                        <exclude>org.operaton.bpm.extension.nifi:*</exclude>
+                                    </excludes>
+                                </requireReleaseDeps>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
