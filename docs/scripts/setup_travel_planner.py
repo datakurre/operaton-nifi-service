@@ -383,7 +383,7 @@ def configure_nifi():
         "Handle Unknown Destination",
         "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
         operaton_bundle,
-        360, 1040,
+        640, 1040,
         {
             "External Task Service": operaton_svc_id,
             "Error Code": "UNKNOWN_DESTINATION",
@@ -406,7 +406,7 @@ def configure_nifi():
         "Fetch Fallback Task",
         "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
         operaton_bundle,
-        360, 1040,
+        640, 1240,
         {
             "External Task Service": operaton_svc_id,
             "Topic Name": "fin-destination-fallback",
@@ -416,7 +416,7 @@ def configure_nifi():
         "Email Fallback Notice",
         "org.apache.nifi.processors.standard.PutEmail",
         standard_bundle,
-        360, 1240,
+        640, 1440,
         {
             "SMTP Hostname": "127.0.0.1",
             "SMTP Port": "1025",
@@ -432,7 +432,7 @@ def configure_nifi():
         "Complete Fallback Task",
         "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
         operaton_bundle,
-        360, 1440,
+        640, 1640,
         {
             "External Task Service": operaton_svc_id,
             "Variables Format": "NONE",
@@ -443,13 +443,13 @@ def configure_nifi():
     connect(p_email_fallback, p_complete_fallback, ["success"])
 
     # =========================================================================
-    # Column 2 (x=640): FMI Weather & Cultural Bio (fin-weather-check)
+    # Column 2 (x=1200): FMI Weather & Cultural Bio (fin-weather-check)
     # =========================================================================
     p_fetch_weather = create_p(
         "Fetch Weather Task",
         "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
         operaton_bundle,
-        640, 40,
+        1200, 40,
         {
             "External Task Service": operaton_svc_id,
             "Topic Name": "fin-weather-check",
@@ -459,7 +459,7 @@ def configure_nifi():
         "Extract Destination Coordinates",
         "org.apache.nifi.processors.standard.EvaluateJsonPath",
         standard_bundle,
-        640, 240,
+        1200, 240,
         {
             "Destination": "flowfile-attribute",
             "dest.name": "$.destinationName",
@@ -472,7 +472,7 @@ def configure_nifi():
         "Fetch Open-Meteo FMI Weather",
         "org.apache.nifi.processors.standard.InvokeHTTP",
         standard_bundle,
-        640, 440,
+        1200, 440,
         {
             "HTTP Method": "GET",
             "HTTP URL": "https://api.open-meteo.com/v1/forecast?latitude=${dest.lat}&longitude=${dest.lon}&current=temperature_2m,weather_code,wind_speed_10m&daily=sunrise,sunset&timezone=auto",
@@ -484,7 +484,7 @@ def configure_nifi():
         "Parse Weather Stats",
         "org.apache.nifi.processors.standard.EvaluateJsonPath",
         standard_bundle,
-        640, 640,
+        1200, 640,
         {
             "Destination": "flowfile-attribute",
             "weather.temp": "$.current.temperature_2m",
@@ -499,7 +499,7 @@ def configure_nifi():
         "Fetch Wikipedia Profile",
         "org.apache.nifi.processors.standard.InvokeHTTP",
         standard_bundle,
-        640, 840,
+        1200, 840,
         {
             "HTTP Method": "GET",
             "HTTP URL": "https://en.wikipedia.org/api/rest_v1/page/summary/${dest.name:equals('Nuuksio'):ifElse('Nuuksio_National_Park', ${dest.name:equals('Koli'):ifElse('Koli_National_Park', ${dest.name:urlEncode()})})}",
@@ -511,7 +511,7 @@ def configure_nifi():
         "Parse Cultural Extract",
         "org.apache.nifi.processors.standard.EvaluateJsonPath",
         standard_bundle,
-        640, 1040,
+        1200, 1040,
         {
             "Destination": "flowfile-attribute",
             "wiki.extract": "$.extract",
@@ -524,7 +524,7 @@ def configure_nifi():
         "Format Destination Dossier",
         "org.apache.nifi.processors.attributes.UpdateAttribute",
         update_attr_bundle,
-        640, 1240,
+        1200, 1240,
         {
             "currentTemp": "${weather.temp} °C",
             "weatherCondition": "${weather.code:isEmpty():ifElse('☀️ Crisp Nordic Weather', ${weather.code:le(0):ifElse('☀️ Clear Skies & Crisp Air', ${weather.code:le(3):ifElse('⛅ Partly Cloudy & Fresh Air', ${weather.code:ge(71):ifElse('❄️ Snowing / Winter Wonder', '🌧️ Fresh Nordic Showers')})})})}",
@@ -537,7 +537,7 @@ def configure_nifi():
         "Prepare Dossier Variables JSON",
         "org.apache.nifi.processors.standard.AttributesToJSON",
         standard_bundle,
-        640, 1440,
+        1200, 1440,
         {
             "Attributes List": "currentTemp,weatherCondition,daylightHours,destinationDescription,destinationPhoto",
             "Destination": "flowfile-content",
@@ -550,7 +550,7 @@ def configure_nifi():
         "Complete Weather & Dossier Task",
         "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
         operaton_bundle,
-        640, 1640,
+        1200, 1640,
         {
             "External Task Service": operaton_svc_id,
             "Variables Format": "SIMPLE",
@@ -569,13 +569,13 @@ def configure_nifi():
     connect(p_json_dossier, p_complete_weather, ["success"])
 
     # =========================================================================
-    # Column 3 (x=1200): Itinerary Compilation & Dining (fin-itinerary-compile)
+    # Column 3 (x=1760): Itinerary Compilation & Dining (fin-itinerary-compile)
     # =========================================================================
     p_fetch_compile = create_p(
         "Fetch Itinerary Compile Task",
         "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
         operaton_bundle,
-        1200, 40,
+        1760, 40,
         {
             "External Task Service": operaton_svc_id,
             "Topic Name": "fin-itinerary-compile",
@@ -585,7 +585,7 @@ def configure_nifi():
         "Extract User Choices",
         "org.apache.nifi.processors.standard.EvaluateJsonPath",
         standard_bundle,
-        1200, 240,
+        1760, 240,
         {
             "Destination": "flowfile-attribute",
             "user.dest": "$.destinationName",
@@ -606,7 +606,7 @@ def configure_nifi():
         "Map Regional Food & Gear",
         "org.apache.nifi.processors.attributes.UpdateAttribute",
         update_attr_bundle,
-        1200, 440,
+        1760, 440,
         {
             "food.lunch": "${user.dest:equals('Koli'):ifElse('Warm Karjalanpiirakat (Karelian rice pies with egg butter) + campfire grilled sausages on Lake Pielinen shore', ${user.dest:equals('Tampere'):ifElse('Authentic hot Mustamakkara with tart lingonberry jam & fresh milk at Tammelantori Market', ${user.dest:equals('Rovaniemi'):ifElse('Hearty Lohikeitto (creamy salmon soup loaded with fresh dill and butter) with dense sourdough rye bread', 'Loimulohi (flame-cooked plank salmon) with pickled cucumbers by the lake')})})}",
             "food.fika": "${user.dest:equals('Koli'):ifElse('Nokipannukahvi (campfire kettle coffee) with warm leipäjuusto (squeaky cheese) & cloudberries', ${user.dest:equals('Tampere'):ifElse('World-famous hot cardamom donuts (munkki) at the historic Pyynikki Observation Tower Cafe', ${user.dest:equals('Rovaniemi'):ifElse('Spiced hot berry glögi with fresh gingerbread cookies and arctic cloudberries', 'Giant fresh cinnamon-cardamom bun (korvapuusti) & dark roast coffee at Haltia Nature Centre')})})}",
@@ -618,7 +618,7 @@ def configure_nifi():
         "Render Adventure Markdown",
         "org.apache.nifi.processors.attributes.UpdateAttribute",
         update_attr_bundle,
-        1200, 640,
+        1760, 640,
         {
             "itineraryMarkdown": (
                 "# 🌲 Your Finnish Adventure Briefing: ${user.dest}\n\n"
@@ -644,7 +644,7 @@ def configure_nifi():
         "Prepare Itinerary Variables JSON",
         "org.apache.nifi.processors.standard.AttributesToJSON",
         standard_bundle,
-        1200, 840,
+        1760, 840,
         {
             "Attributes List": "itineraryMarkdown",
             "Destination": "flowfile-content",
@@ -657,7 +657,7 @@ def configure_nifi():
         "Complete Itinerary Compile",
         "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
         operaton_bundle,
-        1200, 1040,
+        1760, 1040,
         {
             "External Task Service": operaton_svc_id,
             "Variables Format": "SIMPLE",
@@ -672,13 +672,13 @@ def configure_nifi():
     connect(p_json_itinerary, p_complete_compile, ["success"])
 
     # =========================================================================
-    # Column 4 (x=1760): Dispatch to Mailpit & File Archive (fin-itinerary-dispatch)
+    # Column 4 (x=2320): Dispatch to Mailpit & File Archive (fin-itinerary-dispatch)
     # =========================================================================
     p_fetch_dispatch = create_p(
         "Fetch Dispatch Task",
         "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
         operaton_bundle,
-        1760, 40,
+        2320, 40,
         {
             "External Task Service": operaton_svc_id,
             "Topic Name": "fin-itinerary-dispatch",
@@ -688,7 +688,7 @@ def configure_nifi():
         "Extract Dispatch Content",
         "org.apache.nifi.processors.standard.EvaluateJsonPath",
         standard_bundle,
-        1760, 240,
+        2320, 240,
         {
             "Destination": "flowfile-attribute",
             "itineraryMarkdown": "$.itineraryMarkdown",
@@ -701,7 +701,7 @@ def configure_nifi():
         "Set Markdown as FlowFile Content",
         "org.apache.nifi.processors.standard.ReplaceText",
         standard_bundle,
-        1760, 440,
+        2320, 440,
         {
             "Replacement Strategy": "Always Replace",
             "Replacement Value": "${itineraryMarkdown}",
@@ -712,7 +712,7 @@ def configure_nifi():
         "Set File and Email Attributes",
         "org.apache.nifi.processors.attributes.UpdateAttribute",
         update_attr_bundle,
-        1760, 640,
+        2320, 640,
         {
             "filename": "${destinationName:toLower()}-adventure-guide.md",
             "emailTo": "${travelerEmail:isEmpty():ifElse('ada.lovelace@example.test', ${travelerEmail})}",
@@ -724,7 +724,7 @@ def configure_nifi():
         "Deliver Itinerary to Mailpit",
         "org.apache.nifi.processors.standard.PutEmail",
         standard_bundle,
-        1760, 840,
+        2320, 840,
         {
             "SMTP Hostname": "127.0.0.1",
             "SMTP Port": "1025",
@@ -740,7 +740,7 @@ def configure_nifi():
         "Archive Itinerary Markdown",
         "org.apache.nifi.processors.standard.PutFile",
         standard_bundle,
-        1760, 1040,
+        2320, 1040,
         {
             "Directory": itinerary_dir,
             "Conflict Resolution Strategy": "replace",
@@ -751,7 +751,7 @@ def configure_nifi():
         "Complete Dispatch Task",
         "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
         operaton_bundle,
-        1760, 1240,
+        2320, 1240,
         {
             "External Task Service": operaton_svc_id,
             "Variables Format": "NONE",
