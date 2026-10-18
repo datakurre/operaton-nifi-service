@@ -31,6 +31,7 @@
 
     packages = [
       pkgs.python3
+      pkgs.mailpit
     ];
 
     languages.java = {
@@ -74,6 +75,10 @@
       OPERATON_REST_URL = "http://localhost:8080/engine-rest";
       OPERATON_ADMIN_USER_ID = config.services.operaton.adminUser.id;
       OPERATON_ADMIN_USER_PASSWORD = config.services.operaton.adminUser.password;
+    };
+
+    processes.mailpit = {
+      exec = "mailpit --listen 127.0.0.1:8025 --smtp 127.0.0.1:1025 --disable-version-check";
     };
 
     processes.preconfigure = {

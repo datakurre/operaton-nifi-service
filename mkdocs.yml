@@ -33,6 +33,10 @@ plugins:
   - search
   - include-markdown
 
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
+
 markdown_extensions:
   - admonition
   - tables
@@ -46,12 +50,16 @@ markdown_extensions:
   - pymdownx.snippets:
       base_path: ["."]
       check_paths: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.details
   - attr_list
   - md_in_html
 
 nav:
-  - Home: index.md
-  - Order Fulfillment Demo: order-fulfillment.md
-  - Finnish Travel Planner: finnish-travel-planner.md
+  - Overview: index.md
+  - Tutorial: tutorial.md
+  - Technical Reference: reference.md

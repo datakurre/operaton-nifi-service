@@ -30,8 +30,8 @@ Configures an external task with a pre-bound `bpmn:Error` definition:
 
 ### 3. NiFi Demo Task (`org.operaton.nifi.demo-task`)
 
-Pre-configured for local testing with the repository's sample pipeline (`demo-process.bpmn`):
+Pre-configured for local testing with sample external task pipelines:
 
 - **Topic Name**: `demo`
-- **Action**: `demo-process`
+- **Action**: `demo`
 - **Asynchronous Before**: `true`

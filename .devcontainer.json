@@ -23,7 +23,7 @@
       ]
     }
   },
-  "forwardPorts": [8080, 8081, 8200],
+  "forwardPorts": [8080, 8081, 8200, 8025],
   "portsAttributes": {
     "8080": {
       "label": "Operaton BPM",
@@ -36,6 +36,10 @@
     "8200": {
       "label": "HashiCorp Vault",
       "onAutoForward": "silent"
+    },
+    "8025": {
+      "label": "Mailpit Web UI",
+      "onAutoForward": "notify"
     }
   }
 }

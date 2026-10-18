@@ -1108,6 +1108,16 @@ def main():
     configure_operaton(operaton_url, devenv_root)
     wait_for_nifi(nifi_addr)
     configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url)
+    try:
+        docs_scripts = os.path.join(devenv_root, "docs", "scripts")
+        if docs_scripts not in sys.path:
+            sys.path.insert(0, docs_scripts)
+        from setup_travel_planner import configure_nifi as configure_travel_planner, deploy_bpmn as deploy_travel_bpmn
+        deploy_travel_bpmn()
+        configure_travel_planner()
+        print("Finnish Travel Planner pipeline configured successfully.")
+    except Exception as e:
+        print(f"Notice setting up Finnish Travel Planner: {e}")
 
 
 if __name__ == "__main__":

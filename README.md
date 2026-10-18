@@ -2,215 +2,108 @@
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
 
-Apache NiFi 2.x extensions for working on [Operaton](https://operaton.org)
-external tasks, plus a devenv module for running NiFi locally with Operaton BPM and HashiCorp Vault.
+**Operaton NiFi External Task Worker** bridges [Operaton BPM](https://operaton.org) (an open-source, lightweight BPMN 2.0 workflow engine) with [Apache NiFi 2.x](https://nifi.apache.org) (an enterprise-scale, visual dataflow and stream processing platform).
 
-## Components
+By implementing the **External Task Pattern**, it completely decouples business process state orchestration from heavy integration, data transformation, and external service communication.
 
-`nifi-controller/` — **StandardOperatonExternalTaskService**, a controller service
-wrapping the Operaton External Task REST API (`/external-task/...`).
+---
 
-| Property | Default | Description |
-| --- | --- | --- |
-| Operaton REST URL | `http://localhost:8080/engine-rest` | Base URL of the Operaton REST API (`ENVIRONMENT` expression language scope, parameter context compatible) |
-| Worker ID | `nifi-${hostname()}` | Unique worker identifier per NiFi node |
-| OAuth2 Access Token Provider | optional | Optional controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 token retrieval |
-| OAuth2 Token Endpoint | optional | OAuth2 token endpoint URL for dynamic service account authentication via `client_credentials` grant (auto-fetches, caches, and refreshes tokens) |
-| OAuth2 Client ID | optional | OAuth2 service account Client ID |
-| OAuth2 Client Secret | optional | OAuth2 service account Client Secret (sensitive; for Vault / Parameter Contexts) |
-| OAuth2 Scope | optional | Optional OAuth2 scope(s) for the `client_credentials` request |
-| Bearer Token | optional | Fixed OAuth2 / JWT Bearer token (sensitive; used when dynamic OAuth2 service account is not configured) |
-| Username / Password | optional | HTTP Basic authentication credentials (`Password` is marked sensitive for Vault / Parameter Contexts) |
-| Request Timeout | `30 sec` | HTTP request timeout (long polling timeout is added on top) |
-| Max Lock Lifetime | `1 hour` | How long after fetching locks are extended at most |
+## 🚀 Key Highlights & Main Features
 
-`nifi-processor/` — processors using that service:
+- 🔌 **Zero-Code External Tasks**: Connect Operaton BPMN service tasks directly to NiFi dataflows via pre-configured [Operaton Element Templates](https://github.com/datakurre/operaton-nifi-service/tree/main/.operaton/element-templates) in the modeler.
+- ⏱️ **Automatic Background Lock Extension**: Built-in background lease renewal ensures tasks never time out during long-running ETL jobs, batch database updates, or slow third-party API calls—without modifying flow logic.
+- 🛡️ **BPMN Business Errors vs. Technical Failures**: Distinguish domain errors routed to BPMN boundary events (`HandleExternalTaskBpmnError`) from operational incidents with automatic retries and backoff (`HandleExternalTaskFailure`).
+- 🔄 **Simple JSON & Type Preservation**: Exchange intuitive, plain JSON payloads in NiFi FlowFiles while transparently preserving complex Java/BPMN data types (`Long`, `Date`, `Xml`, `Object`) across the round trip.
+- 🔐 **Enterprise Secrets with HashiCorp Vault**: Native NiFi Parameter Contexts backed by HashiCorp Vault KV-v2 (`HashiCorpVaultParameterProvider`), alongside OAuth2 Client Credentials, Bearer token, and Basic Auth.
+- 💻 **Complete Local Stack in Minutes**: Fully reproducible development environment via [devenv](https://devenv.sh) packaging Operaton 2.x, NiFi 2.4.0, HashiCorp Vault, and Mailpit.
 
-| Processor | Does | Key Properties |
-| --- | --- | --- |
-| FetchAndLockExternalTasks | Locks tasks of a topic; one FlowFile per task, variables as JSON content, task metadata as `operaton.externalTask.*` attributes | `Topic Name`, `Max Tasks` (`10`), `Lock Duration` (`5 min`), `Long Polling Timeout` (`0 sec`), `Use Priority` (`true`), `Variables`, `Local Variables` (`false`), `Deserialize Values` (`true`), `Include Extension Properties` (`false`), `Business Key`, `Process Definition ID`, `Process Definition Key`, `Process Definition Version Tag`, `Without Tenant ID` (`false`), `Tenant IDs`, `Variables Format` (`Simple JSON`) |
-| CompleteExternalTask | Completes the task, setting variables from FlowFile content | `External Task ID` (`${operaton.externalTask.id}`), `Variables Format` (`Simple JSON`), `Local Variables` (`false`) |
-| HandleExternalTaskFailure | Reports a failure; decrements `operaton.externalTask.retries` (or uses *Default Retries* on the first failure); 0 retries creates an incident | `External Task ID` (`${operaton.externalTask.id}`), `Error Message` (`${operaton.error.message}`), `Error Details`, `Retries` (optional override), `Default Retries` (`3`), `Retry Timeout` (`1 min`), `Variables Format` (`None`), `Local Variables` (`false`) |
-| HandleExternalTaskBpmnError | Throws a BPMN error with an error code to be caught by an error boundary event or event sub-process | `External Task ID` (`${operaton.externalTask.id}`), `Error Code`, `Error Message`, `Variables Format` (`None`) |
-| UnlockExternalTask | Releases the lock on an external task so another worker can pick it up immediately | `External Task ID` (`${operaton.externalTask.id}`) |
+---
 
-The task ID is read from `${operaton.externalTask.id}` by default. When an API call fails, the FlowFile is routed to `failure` with `operaton.error.status` (HTTP status code, `0` if connection/client error) and `operaton.error.message`, so a failed *Complete* or *BpmnError* can be routed straight to *HandleExternalTaskFailure*.
+## 🏛️ Architectural Overview
 
-### Flow Patterns
+Operaton maintains process instances, execution tokens, and business transaction state. When a process token reaches an external task, NiFi long-polls the Operaton REST API, locks the task, executes the processing dataflow, and reports completion or errors back to the engine.
 
-1. **Standard Processing**:
-   ```
-   FetchAndLockExternalTasks → (your processing) → CompleteExternalTask
-                                                          │ (failure)
-                                                          ▼
-                                              HandleExternalTaskFailure
-   ```
+```mermaid
+flowchart LR
+    subgraph Operaton["Operaton BPM 2.x"]
+        direction TB
+        Process["BPMN 2.0 Workflows<br/>(External Tasks)"]
+        Cockpit["Cockpit Monitoring & Incidents"]
+        Tasklist["Human-in-the-Loop Tasklist"]
+    end
 
-2. **BPMN Business Errors vs Technical Failures**:
-   ```
-   FetchAndLockExternalTasks → (validation / business logic)
-                                    ├── [valid]   → CompleteExternalTask
-                                    │                     │ (failure)
-                                    │                     ▼
-                                    │             HandleExternalTaskFailure
-                                    └── [invalid] → HandleExternalTaskBpmnError (e.g. Error Code "${error.code}")
-                                                          │ (failure)
-                                                          ▼
-                                                  HandleExternalTaskFailure
-   ```
-   - **BPMN Errors (`HandleExternalTaskBpmnError`)**: Represents modeled domain/business exceptions caught by BPMN boundary events or event sub-processes in Operaton. FlowFile content can optionally supply variables with the error.
-   - **Technical Failures (`HandleExternalTaskFailure`)**: Represents unexpected processing exceptions or upstream service failures. Decrements remaining retries, optionally passes variables/localVariables, and creates an Operaton incident once retries reach 0.
+    subgraph Security["Enterprise Security"]
+        Vault["HashiCorp Vault KV-v2<br/>(#{url}, #{worker_id}, #{password})"]
+    end
 
-### Lock Extension
+    subgraph NiFi["Apache NiFi 2.x"]
+        direction TB
+        CS["StandardOperatonExternalTaskService<br/>(Controller Service & Background Lock Extender)"]
+        Fetch["FetchAndLockExternalTasks"]
+        Pipeline["Visual Dataflow Pipeline<br/>(Validation, Transformation, Enrichment)"]
+        Complete["CompleteExternalTask"]
+        Errors["HandleExternalTaskBpmnError<br/>HandleExternalTaskFailure"]
+    end
 
-The controller service extends the locks of the tasks it fetches in the background, so flows need
-no extra steps for long-running processing. The service remembers every task it fetches and, once
-half of the fetch *Lock Duration* has passed, extends the lock by that duration again. It stops when:
+    subgraph External["External Systems & APIs"]
+        APIs["REST / SOAP APIs"]
+        DB["Databases & Queues"]
+        Mail["Email (Mailpit)"]
+    end
 
-- the task is completed, failed, has thrown a BPMN error or is unlocked through the service;
-- Operaton rejects an extension with `400` or `404`, e.g. because the task was finished elsewhere,
-  or its lock had already expired or was taken by another worker;
-- *Max Lock Lifetime* has passed since the task was fetched. This bounds how long a task stays
-  locked when its FlowFile is dropped (auto-terminated relationship, emptied queue, FlowFile
-  expiration) without finishing the task, which NiFi does not tell the service about.
+    Vault -->|Parameter Provider| CS
+    CS <-->|REST API /external-task| Process
+    Fetch --> Pipeline --> Complete
+    Pipeline -.-> Errors
+    Pipeline <--> External
+    Errors -->|BPMN Boundary Error| Tasklist
+    Errors -->|Technical Incident| Cockpit
+```
 
-Other errors are retried on the next round, one second after the previous round ends. When
-Operaton is unavailable, the round stops at the first failure. Locks are extended one at a time,
-the soonest expiring first, each request timing out after a quarter of its *Lock Duration*
-(at least 1 second, at most *Request Timeout*). The extensions therefore keep up only as long as all due locks can
-be extended within half of the *Lock Duration*.
+---
 
-The tracked tasks are kept in the service's local state, so their locks are still extended after a
-NiFi restart, as long as the locks have not expired meanwhile. Locks fetched with a *Lock Duration*
-under 3 seconds are not extended, as they could expire between two rounds. Nor are locks as long as
-*Max Lock Lifetime* or longer, as they would be stopped at once.
+## 📸 Visual Showcase
 
-Locks are extended by the node that fetched the task. A FlowFile load balanced to another node
-cannot finish its task anyway, because the other node has a different *Worker ID*. The lock of such
-a task is extended until *Max Lock Lifetime*.
+### Visual Dataflow Pipelines in Apache NiFi 2.4.0
+Build modular, self-documenting dataflow pipelines that subscribe to external task topics, enrich data from open APIs, and coordinate delivery:
 
-Keep the fetch *Lock Duration* short, e.g. `1 min`, so that the locks of tasks stuck
-on a stopped node expire soon. Set *Max Lock Lifetime* above the longest time
-a task may legitimately spend in the flow, including time waiting in queues.
+![Apache NiFi Flow Canvas](docs/images/nifi-travel-canvas.png)
 
-**Upgrading:** the *Automatic Lock Extension* property was removed, as locks are always extended now,
-and its value is dropped from the controller service on upgrade. Flows that use the removed
-`ExtendExternalTaskLock` processor must delete it (NiFi shows it as missing) and connect its incoming
-connection to the next processor.
+### Real-Time Process Orchestration in Operaton Cockpit
+Monitor live process tokens, execution state, and historical instances in real time:
 
-### Attributes Reference
+![Operaton Process Runtime Diagram](docs/images/operaton-cockpit-model.png)
 
-`FetchAndLockExternalTasks` writes the following attributes to each FlowFile:
+---
 
-| Attribute | Description |
-| --- | --- |
-| `operaton.externalTask.id` | External task ID |
-| `operaton.externalTask.topicName` | External task topic name |
-| `operaton.externalTask.workerId` | Worker ID holding the lock |
-| `operaton.externalTask.activityId` | BPMN activity ID (task definition) |
-| `operaton.externalTask.activityInstanceId` | Execution activity instance ID |
-| `operaton.externalTask.executionId` | Execution ID |
-| `operaton.externalTask.processInstanceId` | Process instance ID |
-| `operaton.externalTask.processDefinitionId` | Process definition ID |
-| `operaton.externalTask.processDefinitionKey` | Process definition key |
-| `operaton.externalTask.processDefinitionVersionTag` | Process definition version tag (if set) |
-| `operaton.externalTask.businessKey` | Process instance business key (if set) |
-| `operaton.externalTask.tenantId` | Tenant ID (if set) |
-| `operaton.externalTask.retries` | Remaining retries count (omitted on first attempt) |
-| `operaton.externalTask.priority` | Task priority |
-| `operaton.externalTask.createTime` | ISO timestamp of task creation |
-| `operaton.externalTask.lockExpirationTime` | ISO timestamp of lock expiration |
-| `operaton.externalTask.errorMessage` | Error message from previous failure attempt (if any) |
-| `operaton.externalTask.errorDetails` | Error details from previous failure attempt (if any) |
-| `operaton.externalTask.extensionProperty.<name>` | BPMN extension property `<name>` (when `Include Extension Properties` is `true`) |
-| `operaton.externalTask.variableTypes` | Saved JSON type mapping (for Simple JSON mode round-tripping) |
-| `mime.type` | `application/json` |
+## ⚡ Quickstart
 
-Error attributes set when processors route to `failure`:
-
-| Attribute | Description |
-| --- | --- |
-| `operaton.error.status` | HTTP status code returned by the REST API (`0` if connection or client error) |
-| `operaton.error.message` | Error message returned by Operaton or the client exception message |
-
-### Process Variables in FlowFiles
-
-Variables in FlowFile content are either:
-
-- **Simple JSON** (default): `{"name": "Ada", "count": 2, "order": {"id": 1}}`.
-  Fetch records the original variable types in the `operaton.externalTask.variableTypes` attribute, and Complete / BPMN Error / Failure restore them when the value still fits (so `Long`, `Short`, `Date`, `Xml` and serialized `Object` variables survive a round trip). `File` variables are never written back. Other values are typed by their JSON value: strings, booleans, integers (`Integer`/`Long`), decimals (`Double`) and nulls map to the matching Operaton types; numbers that `Long` or `Double` cannot hold exactly are rejected; objects and arrays map to `Json` variables, so the engine needs the Spin JSON plugin.
-- **Operaton Typed JSON**: `{"name": {"type": "String", "value": "Ada"}}`, as used by the REST API directly.
-
-### HashiCorp Vault Integration
-
-`StandardOperatonExternalTaskService` properties support NiFi Parameter Contexts backed by `HashiCorpVaultParameterProvider`:
-
-1. **Vault KV-v2 Secret (`secret/operaton`)**: Stores `url`, `worker_id`, `username`, and `password`.
-2. **`StandardHashiCorpVaultClientService`**: Configured with `configuration-strategy = direct-properties` and connected to Vault (`http://127.0.0.1:8200`).
-3. **`HashiCorpVaultParameterProvider`**: Reads secrets from KV-v2 mount `secret` and synchronizes them into Parameter Context `operaton` (`password` as a sensitive parameter; `url`, `worker_id`, and `username` as non-sensitive parameters).
-4. **`StandardOperatonExternalTaskService`**: References `#{url}`, `#{worker_id}`, `#{username}`, and `#{password}` from the bound `operaton` Parameter Context.
-
-## Order Fulfillment Demo & Local Development
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/datakurre/operaton-nifi-service)
-
-The repository includes a comprehensive, multi-stage Order Fulfillment demo process in `deployment/demo-process.bpmn` (`demo-process` v2.0), featuring automated validation, high-value decision gateways, fraud detection boundary events, human-in-the-loop manual review, and payment/shipment fulfillment.
-
-For a full narrative walkthrough with architecture diagrams and live screenshots, see the **[Order Fulfillment Guide](docs/order-fulfillment.md)**.
-
-Start the entire local development stack (Operaton, NiFi, Vault, and auto-preconfiguration):
+Launch the entire local stack (Operaton, NiFi 2.4.0, HashiCorp Vault, Mailpit, and automated preconfiguration):
 
 ```sh
 devenv up
 ```
 
-Services started:
-- **Operaton BPM**: http://127.0.0.1:8080 (REST API at `/engine-rest` with Basic Auth enabled, Webapps at `/operaton/`, credentials: `demo` / `demo`, auto-deploys `deployment/demo-process.bpmn`)
-- **Apache NiFi**: http://127.0.0.1:8081/nifi/ (Plain HTTP, no authentication)
-- **HashiCorp Vault**: http://127.0.0.1:8200 (Web UI enabled, unsealed automatically, token stored in `.devenv/state/env_file`)
-- **Preconfiguration**: Automatically provisions Vault KV secrets (`secret/operaton`), synchronizes `HashiCorpVaultParameterProvider` into Parameter Context `operaton`, configures and enables `StandardOperatonExternalTaskService` using Vault parameters (`#{url}`, `#{worker_id}`, `#{username}`, `#{password}`), provisions a 3-column processing pipeline on the NiFi canvas exercising all processor types, and seeds 5 realistic order instances (`ORD-1000` to `ORD-1004`) across all lifecycle states (active validation, fraud check, human task review, and incident handling).
+Once running, access the local services:
+- **Operaton BPM**: [http://127.0.0.1:8080](http://127.0.0.1:8080) (`demo` / `demo`)
+- **Apache NiFi**: [http://127.0.0.1:8081/nifi/](http://127.0.0.1:8081/nifi/)
+- **HashiCorp Vault UI**: [http://127.0.0.1:8200](http://127.0.0.1:8200)
+- **Mailpit Web UI**: [http://127.0.0.1:8025](http://127.0.0.1:8025)
 
-Additional commands:
-```sh
-devenv shell -- build          # mvn package for all modules, NARs under */*-nar/target
-devenv test                    # run unit tests across all controller and processor modules
-devenv shell -- nifi-deploy    # manually copy newly rebuilt NARs into NiFi's autoload directory
-devenv shell -- preconfigure   # rerun preconfiguration on demand
-devenv shell -- python3 docs/scripts/setup_demo_instance.py --reset # reset and reseed demo instances
-devenv shell -- playwright-python docs/scripts/capture_screenshots.py # regenerate documentation screenshots
-devenv shell -- vault status   # interact with local Vault using vault CLI
-```
+---
 
-The `services.nifi` module (`devenv/modules/nifi.nix`) packages the official
-NiFi 2.4.0 binary, because nixpkgs only has NiFi 1.x. It runs NiFi over plain
-HTTP with no authentication (local development only) and keeps its state in
-`.devenv/state/nifi`. Built NARs in `narPaths` are automatically built if missing and deployed to
-NiFi's autoload directory on startup.
+## 📚 Documentation
 
-## Visual Documentation & Screencasts
+- 🧭 **[Narrative Tutorial](docs/tutorial.md)**: A guided, end-to-end tutorial walking through process modeling, NiFi controller service and parameter configuration, multi-stage pipelines, Tasklist interaction, and Mailpit verification.
+- 📖 **[Technical Reference & API Docs](docs/reference.md)**: Exhaustive technical specification for all controller services, processors, background lock extension mechanics, attribute mappings, and Vault integration.
 
-Automated headless browser scripts generate screenshots and multi-actor walkthrough screencasts of the running stack:
+---
 
-- **Generate screenshots** (NiFi canvas, Operaton Cockpit & Tasklist, Vault):
-  ```sh
-  playwright-python docs/scripts/capture_screenshots.py
-  # Optionally record video clip:
-  playwright-python docs/scripts/capture_screenshots.py --record-video
-  ```
-- **Multi-actor screencast walkthrough** (driven with [robotframework-screencast](https://github.com/datakurre/robotframework-screencast)):
-  ```sh
-  screencast run docs/screencast/external_task_walkthrough.robot --take docs/screencast/take-1
-  screencast compose docs/screencast/take-1
-  screencast verify docs/screencast/take-1
-  ```
+## 💻 GitHub Codespaces
 
-## GitHub Codespaces
-
-This repository includes a `.devcontainer.json` configuration based on the devenv devcontainer image (`ghcr.io/cachix/devenv/devcontainer:latest`, currently `v2.4.0`) with Nix, Direnv, devenv, Java, and Operaton BPMN/DMN/Form modeler extensions pre-configured.
+This repository includes a `.devcontainer.json` configuration based on the devenv devcontainer image with Nix, Direnv, devenv, Java, and Operaton BPMN modeler extensions pre-configured.
 
 When launched in Codespaces:
-- `updateContentCommand` automatically builds the NAR extensions via `devenv shell -- build`.
-- Operaton BPMN Modeler (`datakurre.vscode-operaton-bpmn-js-modeler`) is pre-configured with `bpmnModeler.engineRestUrl = http://localhost:8080/engine-rest` for one-click deployment.
-- Ports 8080 (Operaton), 8081 (NiFi), and 8200 (Vault) are forwarded automatically.
-- NiFi (`nifi.web.proxy.host`, including dynamic `${CODESPACE_NAME}-8081.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}` entries) and Operaton (`forwardHeadersStrategy = "native"`) are configured to support Codespaces' forwarded reverse-proxy URLs out of the box.
+- Ports 8080 (Operaton), 8081 (NiFi), 8200 (Vault), and 8025 (Mailpit) are forwarded automatically.
+- Reverse proxy headers (`nifi.web.proxy.host`, `forwardHeadersStrategy`) are pre-configured for seamless browser access.
 - Run `devenv up` inside the terminal to boot the full stack.

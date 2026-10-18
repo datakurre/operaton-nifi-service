@@ -16,7 +16,7 @@ class OperatonNiFiLibrary:
     @keyword
     def reset_demo_environment(self):
         """Resets and reseeds Operaton demo instances and NiFi flow."""
-        subprocess.run(["python3", "docs/scripts/setup_demo_instance.py", "--reset"], check=True)
+        subprocess.run(["python3", "docs/scripts/setup_travel_planner.py"], check=True)
 
     @keyword
     def show_narrative_banner(self, text, tag="OPERATON"):
