@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -871,6 +872,114 @@ public class TestStandardOperatonExternalTaskService {
         } finally {
             proxyServer.stop(0);
         }
+    }
+
+    @Test
+    public void testProxyCredentialsPreserves401WithoutWwwAuthenticate() throws Exception {
+        HttpServer proxyServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxyServer.createContext("/", exchange -> {
+            String proxyAuth = exchange.getRequestHeaders().getFirst("Proxy-Authorization");
+            String expectedAuth = "Basic " + Base64.getEncoder().encodeToString("proxyuser:proxypass".getBytes(StandardCharsets.UTF_8));
+            if (!expectedAuth.equals(proxyAuth)) {
+                exchange.getResponseHeaders().add("Proxy-Authenticate", "Basic realm=\"proxy\"");
+                exchange.sendResponseHeaders(407, -1);
+                exchange.close();
+                return;
+            }
+            // Return 401 with NO WWW-Authenticate header
+            byte[] out = "{\"message\": \"Unauthorized\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(401, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        proxyServer.start();
+        try {
+            MockProxyConfigurationService proxyService = new MockProxyConfigurationService(
+                    "127.0.0.1", proxyServer.getAddress().getPort(), "proxyuser", "proxypass");
+            runner.addControllerService("proxy-auth-service", proxyService);
+            runner.enableControllerService(proxyService);
+            runner.setProperty(service, StandardOperatonExternalTaskService.PROXY_CONFIGURATION_SERVICE, "proxy-auth-service");
+            runner.enableControllerService(service);
+
+            OperatonException e = assertThrows(OperatonException.class, () -> service.unlock("task-1"));
+            assertEquals(401, e.getStatusCode());
+        } finally {
+            proxyServer.stop(0);
+        }
+    }
+
+    @Test
+    public void testProxyCredentialsOAuth2ProviderRetryOn401WithoutWwwAuthenticate() throws Exception {
+        MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider();
+        runner.addControllerService("oauth2-provider", provider);
+        runner.enableControllerService(provider);
+
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
+
+        AtomicInteger attempt = new AtomicInteger(0);
+        List<String> receivedProxyAuth = new ArrayList<>();
+        List<String> receivedAuth = new ArrayList<>();
+
+        HttpServer proxyServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxyServer.createContext("/", exchange -> {
+            String proxyAuth = exchange.getRequestHeaders().getFirst("Proxy-Authorization");
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (proxyAuth != null) {
+                synchronized (receivedProxyAuth) {
+                    receivedProxyAuth.add(proxyAuth);
+                }
+            }
+            if (auth != null) {
+                synchronized (receivedAuth) {
+                    receivedAuth.add(auth);
+                }
+            }
+            int cur = attempt.incrementAndGet();
+            if (cur == 1) {
+                // First attempt: 401 without WWW-Authenticate
+                byte[] out = "{\"message\": \"Token expired\"}".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(401, out.length);
+                exchange.getResponseBody().write(out);
+            } else {
+                exchange.sendResponseHeaders(204, -1);
+            }
+            exchange.close();
+        });
+        proxyServer.start();
+        try {
+            MockProxyConfigurationService proxyService = new MockProxyConfigurationService(
+                    "127.0.0.1", proxyServer.getAddress().getPort(), "proxyuser", "proxypass");
+            runner.addControllerService("proxy-auth-service", proxyService);
+            runner.enableControllerService(proxyService);
+            runner.setProperty(service, StandardOperatonExternalTaskService.PROXY_CONFIGURATION_SERVICE, "proxy-auth-service");
+            runner.enableControllerService(service);
+
+            service.unlock("task-1");
+
+            assertEquals(1, provider.getRefreshCount());
+            assertEquals(2, attempt.get());
+            String expectedProxyAuth = "Basic " + Base64.getEncoder().encodeToString("proxyuser:proxypass".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedProxyAuth, receivedProxyAuth.get(0));
+            assertEquals(expectedProxyAuth, receivedProxyAuth.get(1));
+            assertEquals("Bearer mock-provider-token", receivedAuth.get(0));
+            assertEquals("Bearer refreshed-mock-provider-token", receivedAuth.get(1));
+        } finally {
+            proxyServer.stop(0);
+        }
+    }
+
+    @Test
+    public void testProxyAuthenticationWithHttpsUrlLogsWarningAndRemainsValid() throws Exception {
+        MockProxyConfigurationService proxyService = new MockProxyConfigurationService(
+                "127.0.0.1", 8080, "proxyuser", "proxypass");
+        runner.addControllerService("proxy-auth-https", proxyService);
+        runner.enableControllerService(proxyService);
+        runner.setProperty(service, StandardOperatonExternalTaskService.PROXY_CONFIGURATION_SERVICE, "proxy-auth-https");
+        runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL, "https://operaton.example.com/engine-rest");
+        runner.assertValid(service);
     }
 
     public static class MockSSLContextProvider extends AbstractControllerService implements SSLContextProvider {

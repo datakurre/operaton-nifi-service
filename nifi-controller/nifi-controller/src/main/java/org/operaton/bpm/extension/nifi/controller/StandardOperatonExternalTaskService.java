@@ -1,9 +1,7 @@
 package org.operaton.bpm.extension.nifi.controller;
 
 import java.io.IOException;
-import java.net.Authenticator;
 import java.net.InetSocketAddress;
-import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -193,6 +191,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
     private volatile OAuth2AccessTokenProvider oauth2Provider;
     private volatile String staticAuthorization;
+    private volatile String proxyAuthorization;
 
     private final ExternalTaskLeases leases = new ExternalTaskLeases();
     private volatile LongSupplier clock = System::currentTimeMillis;
@@ -210,6 +209,16 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
         final List<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
         ProxyConfiguration.validateProxySpec(validationContext, results, ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
+        ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(validationContext);
+        if (proxyConfig != null && proxyConfig.getProxyType() == Proxy.Type.HTTP && proxyConfig.hasCredential()) {
+            PropertyValue restUrlProp = validationContext.getProperty(REST_URL);
+            String url = restUrlProp != null ? restUrlProp.evaluateAttributeExpressions().getValue() : null;
+            if (url != null && url.toLowerCase().startsWith("https://")) {
+                getLogger().warn("Proxy authentication credentials configured with an HTTPS REST URL. "
+                        + "The JDK disables Basic authentication for HTTPS proxy tunneling (CONNECT) by default; "
+                        + "ensure jdk.http.auth.tunneling.disabledSchemes is configured accordingly if proxy authentication is required.");
+            }
+        }
         return results;
     }
 
@@ -239,7 +248,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             Duration requestTimeout,
             AuthenticationStrategy strategy,
             OAuth2AccessTokenProvider oauth2Provider,
-            String staticAuthorization) {
+            String staticAuthorization,
+            String proxyAuthorization) {
     }
 
     private HttpClient createHttpClient(final ConfigurationContext context, final Duration connectTimeout) {
@@ -258,19 +268,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context);
         if (proxyConfig != null && proxyConfig.getProxyType() == Proxy.Type.HTTP) {
             builder.proxy(ProxySelector.of(new InetSocketAddress(proxyConfig.getProxyServerHost(), proxyConfig.getProxyServerPort())));
-            if (proxyConfig.hasCredential()) {
-                builder.authenticator(new Authenticator() {
-                    @Override
-                    protected PasswordAuthentication getPasswordAuthentication() {
-                        if (getRequestorType() == RequestorType.PROXY) {
-                            return new PasswordAuthentication(
-                                    proxyConfig.getProxyUserName(),
-                                    proxyConfig.getProxyUserPassword().toCharArray());
-                        }
-                        return null;
-                    }
-                });
-            }
         }
 
         return builder.build();
@@ -283,6 +280,14 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
 
         HttpClient client = createHttpClient(context, requestTimeout);
+
+        String proxyAuthorization = null;
+        ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context);
+        if (proxyConfig != null && proxyConfig.getProxyType() == Proxy.Type.HTTP && proxyConfig.hasCredential()) {
+            String credentials = proxyConfig.getProxyUserName() + ":"
+                    + (proxyConfig.getProxyUserPassword() != null ? proxyConfig.getProxyUserPassword() : "");
+            proxyAuthorization = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+        }
 
         PropertyValue authStrategyProp = context.getProperty(AUTHENTICATION_STRATEGY);
         AuthenticationStrategy strategy = AuthenticationStrategy.NONE;
@@ -323,7 +328,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             }
         }
 
-        return new ClientConfig(client, baseUrl, requestTimeout, strategy, oauth2Provider, staticAuthorization);
+        return new ClientConfig(client, baseUrl, requestTimeout, strategy, oauth2Provider, staticAuthorization, proxyAuthorization);
     }
 
     @OnEnabled
@@ -338,6 +343,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         this.requestTimeout = config.requestTimeout();
         this.oauth2Provider = config.oauth2Provider();
         this.staticAuthorization = config.staticAuthorization();
+        this.proxyAuthorization = config.proxyAuthorization();
 
         startLockExtension(context);
     }
@@ -442,6 +448,9 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         if (authHeader != null) {
             requestBuilder.header("Authorization", authHeader);
         }
+        if (config.proxyAuthorization() != null) {
+            requestBuilder.header("Proxy-Authorization", config.proxyAuthorization());
+        }
 
         try {
             HttpResponse<String> response = config.client().send(requestBuilder.build(),
@@ -543,6 +552,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
         oauth2Provider = null;
         staticAuthorization = null;
+        proxyAuthorization = null;
     }
 
     void setClock(LongSupplier clock) {
@@ -838,6 +848,10 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         if (authHeader != null) {
             request.header("Authorization", authHeader);
         }
+        String proxyAuth = this.proxyAuthorization;
+        if (proxyAuth != null) {
+            request.header("Proxy-Authorization", proxyAuth);
+        }
 
         HttpResponse<String> response;
         try {
@@ -903,6 +917,10 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
                 .GET();
         if (authHeader != null) {
             request.header("Authorization", authHeader);
+        }
+        String getProxyAuth = this.proxyAuthorization;
+        if (getProxyAuth != null) {
+            request.header("Proxy-Authorization", getProxyAuth);
         }
 
         HttpResponse<String> response;
