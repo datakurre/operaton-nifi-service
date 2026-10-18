@@ -1,6 +1,11 @@
 package org.operaton.bpm.extension.nifi.controller;
 
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -43,6 +48,9 @@ import org.apache.nifi.migration.PropertyConfiguration;
 import org.apache.nifi.oauth2.AccessToken;
 import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.proxy.ProxyConfiguration;
+import org.apache.nifi.proxy.ProxySpec;
+import org.apache.nifi.ssl.SSLContextProvider;
 
 @Tags({"operaton", "bpmn", "external task", "workflow", "rest", "oauth2"})
 @CapabilityDescription("Operaton External Task client using the Operaton REST API "
@@ -73,6 +81,18 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
             .build();
+
+    public static final PropertyDescriptor SSL_CONTEXT_SERVICE = new PropertyDescriptor.Builder()
+            .name("SSL Context Service")
+            .description("SSL Context Service providing the trust store (and key store for mutual TLS) "
+                    + "for HTTPS connections to Operaton and the OAuth2 Token Endpoint. "
+                    + "The JVM default trust store is used when not set.")
+            .required(false)
+            .identifiesControllerService(SSLContextProvider.class)
+            .build();
+
+    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE =
+            ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
 
     public static final PropertyDescriptor OAUTH2_ACCESS_TOKEN_PROVIDER = new PropertyDescriptor.Builder()
             .name("OAuth2 Access Token Provider")
@@ -179,6 +199,8 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     private static final List<PropertyDescriptor> PROPERTIES = List.of(
             REST_URL,
             WORKER_ID,
+            SSL_CONTEXT_SERVICE,
+            PROXY_CONFIGURATION_SERVICE,
             OAUTH2_ACCESS_TOKEN_PROVIDER,
             OAUTH2_TOKEN_ENDPOINT,
             OAUTH2_CLIENT_ID,
@@ -216,6 +238,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     @Override
     protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
         final List<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
+        ProxyConfiguration.validateProxySpec(validationContext, results, ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
 
         final boolean hasEndpoint = validationContext.getProperty(OAUTH2_TOKEN_ENDPOINT).isSet();
         final boolean hasClientId = validationContext.getProperty(OAUTH2_CLIENT_ID).isSet();
@@ -287,10 +310,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         requestTimeout = Duration.ofMillis(
                 context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
 
-        client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(requestTimeout)
-                .build();
+        client = createHttpClient(context);
 
         PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
         if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
@@ -328,6 +348,40 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
 
         startLockExtension(context);
+    }
+
+    private HttpClient createHttpClient(final ConfigurationContext context) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(requestTimeout);
+
+        PropertyValue sslServiceProp = context.getProperty(SSL_CONTEXT_SERVICE);
+        if (sslServiceProp != null && sslServiceProp.isSet()) {
+            SSLContextProvider sslContextProvider = sslServiceProp.asControllerService(SSLContextProvider.class);
+            if (sslContextProvider != null) {
+                builder.sslContext(sslContextProvider.createContext());
+            }
+        }
+
+        ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context);
+        if (proxyConfig != null && proxyConfig.getProxyType() == Proxy.Type.HTTP) {
+            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyConfig.getProxyServerHost(), proxyConfig.getProxyServerPort())));
+            if (proxyConfig.hasCredential()) {
+                builder.authenticator(new Authenticator() {
+                    @Override
+                    protected PasswordAuthentication getPasswordAuthentication() {
+                        if (getRequestorType() == RequestorType.PROXY) {
+                            return new PasswordAuthentication(
+                                    proxyConfig.getProxyUserName(),
+                                    proxyConfig.getProxyUserPassword().toCharArray());
+                        }
+                        return null;
+                    }
+                });
+            }
+        }
+
+        return builder.build();
     }
 
     private void startLockExtension(final ConfigurationContext context) {

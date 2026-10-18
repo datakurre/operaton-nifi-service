@@ -25,11 +25,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import java.net.Proxy;
+import java.security.NoSuchAlgorithmException;
+import java.util.Optional;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.X509ExtendedKeyManager;
+import javax.net.ssl.X509TrustManager;
+
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.oauth2.AccessToken;
 import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
+import org.apache.nifi.proxy.ProxyConfiguration;
+import org.apache.nifi.proxy.ProxyConfigurationService;
 import org.apache.nifi.reporting.InitializationException;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.junit.jupiter.api.AfterEach;
@@ -872,6 +882,142 @@ public class TestStandardOperatonExternalTaskService {
         runner.enableControllerService(service);
         extendLocksAt(T0 + LOCK_DURATION / 2);
         assertEquals("/engine-rest/external-task/task-1/extendLock", lastRequest().path());
+    }
+
+    @Test
+    public void testEnableAndRequestWithSSLContextService() throws Exception {
+        MockSSLContextProvider sslProvider = new MockSSLContextProvider();
+        runner.addControllerService("ssl-provider", sslProvider);
+        runner.enableControllerService(sslProvider);
+        runner.setProperty(service, StandardOperatonExternalTaskService.SSL_CONTEXT_SERVICE, "ssl-provider");
+        runner.assertValid(service);
+        runner.enableControllerService(service);
+
+        responseStatus = 200;
+        responseBody = "[]";
+        List<ExternalTask> tasks = service.fetchAndLock("demo", 10, 60000L, null, 0L);
+        assertNotNull(tasks);
+        assertEquals(0, tasks.size());
+    }
+
+    @Test
+    public void testEnableAndRequestWithProxyConfiguration() throws Exception {
+        List<String> proxyRequests = new ArrayList<>();
+        HttpServer proxyServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxyServer.createContext("/", exchange -> {
+            synchronized (proxyRequests) {
+                proxyRequests.add(exchange.getRequestURI().toString());
+            }
+            byte[] out = "[]".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        proxyServer.start();
+        try {
+            MockProxyConfigurationService proxyService = new MockProxyConfigurationService(
+                    "127.0.0.1", proxyServer.getAddress().getPort(), null, null);
+            runner.addControllerService("proxy-service", proxyService);
+            runner.enableControllerService(proxyService);
+            runner.setProperty(service, StandardOperatonExternalTaskService.PROXY_CONFIGURATION_SERVICE, "proxy-service");
+            runner.assertValid(service);
+            runner.enableControllerService(service);
+
+            List<ExternalTask> tasks = service.fetchAndLock("demo", 10, 60000L, null, 0L);
+            assertNotNull(tasks);
+            assertFalse(proxyRequests.isEmpty(), "Request should have passed through proxy");
+        } finally {
+            proxyServer.stop(0);
+        }
+    }
+
+    @Test
+    public void testEnableAndRequestWithProxyAuthentication() throws Exception {
+        List<String> proxyAuthHeaders = new ArrayList<>();
+        HttpServer proxyServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxyServer.createContext("/", exchange -> {
+            String proxyAuth = exchange.getRequestHeaders().getFirst("Proxy-Authorization");
+            if (proxyAuth != null) {
+                synchronized (proxyAuthHeaders) {
+                    proxyAuthHeaders.add(proxyAuth);
+                }
+                byte[] out = "[]".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, out.length);
+                exchange.getResponseBody().write(out);
+            } else {
+                exchange.getResponseHeaders().add("Proxy-Authenticate", "Basic realm=\"proxy\"");
+                exchange.sendResponseHeaders(407, 0);
+            }
+            exchange.close();
+        });
+        proxyServer.start();
+        try {
+            MockProxyConfigurationService proxyService = new MockProxyConfigurationService(
+                    "127.0.0.1", proxyServer.getAddress().getPort(), "proxyuser", "proxypass");
+            runner.addControllerService("proxy-auth-service", proxyService);
+            runner.enableControllerService(proxyService);
+            runner.setProperty(service, StandardOperatonExternalTaskService.PROXY_CONFIGURATION_SERVICE, "proxy-auth-service");
+            runner.assertValid(service);
+            runner.enableControllerService(service);
+
+            List<ExternalTask> tasks = service.fetchAndLock("demo", 10, 60000L, null, 0L);
+            assertNotNull(tasks);
+            assertFalse(proxyAuthHeaders.isEmpty(), "Proxy-Authorization header should have been sent to proxy");
+            String expectedAuth = "Basic " + Base64.getEncoder().encodeToString("proxyuser:proxypass".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedAuth, proxyAuthHeaders.get(0));
+        } finally {
+            proxyServer.stop(0);
+        }
+    }
+
+    public static class MockSSLContextProvider extends AbstractControllerService implements SSLContextProvider {
+        @Override
+        public SSLContext createContext() {
+            try {
+                return SSLContext.getDefault();
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public Optional<X509ExtendedKeyManager> createKeyManager() {
+            return Optional.empty();
+        }
+
+        @Override
+        public X509TrustManager createTrustManager() {
+            return null;
+        }
+    }
+
+    public static class MockProxyConfigurationService extends AbstractControllerService implements ProxyConfigurationService {
+        private final String host;
+        private final int port;
+        private final String user;
+        private final String password;
+
+        public MockProxyConfigurationService(String host, int port, String user, String password) {
+            this.host = host;
+            this.port = port;
+            this.user = user;
+            this.password = password;
+        }
+
+        @Override
+        public ProxyConfiguration getConfiguration() {
+            ProxyConfiguration config = new ProxyConfiguration();
+            config.setProxyType(Proxy.Type.HTTP);
+            config.setProxyServerHost(host);
+            config.setProxyServerPort(port);
+            if (user != null) {
+                config.setProxyUserName(user);
+                config.setProxyUserPassword(password);
+            }
+            return config;
+        }
     }
 
     public static class MockOAuth2AccessTokenProvider extends AbstractControllerService

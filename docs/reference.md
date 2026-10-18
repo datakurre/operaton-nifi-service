@@ -40,6 +40,8 @@ The controller service wraps the Operaton External Task REST API, maintains acti
 | :--- | :--- | :---: | :---: | :--- |
 | **Operaton REST URL** | `http://localhost:8080/engine-rest` | No | Yes (EL: `ENVIRONMENT`) | Base URL of the Operaton REST API. Compatible with NiFi Parameter Contexts (`#{url}`). |
 | **Worker ID** | `nifi-${hostname()}` | No | Yes (EL: `ENVIRONMENT`) | Unique identifier for the worker node holding the task lock. |
+| **SSL Context Service** | *(none)* | No | No | SSL Context Service providing trust store (and key store for mutual TLS) for HTTPS connections to Operaton and OAuth2 Token Endpoint. JVM default trust store is used when not set. |
+| **Proxy Configuration Service** | *(none)* | No | No | Specifies the Proxy Configuration Controller Service to proxy network requests to Operaton. |
 | **OAuth2 Access Token Provider** | *(none)* | No | No | Optional controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 tokens. |
 | **OAuth2 Token Endpoint** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | Token URL for dynamic `client_credentials` grant authentication. Automatically fetches, caches, and refreshes tokens. |
 | **OAuth2 Client ID** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | OAuth2 Client ID for service account authentication. |
@@ -50,6 +52,9 @@ The controller service wraps the Operaton External Task REST API, maintains acti
 | **Password** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth password (sensitive; `#{password}`). |
 | **Request Timeout** | `30 sec` | No | No | HTTP request timeout for REST API invocations (long polling timeout is added on top). |
 | **Max Lock Lifetime** | `1 hour` | No | No | Upper bound on how long a single task lock can be continuously extended. |
+
+> [!NOTE]
+> **Proxy Authentication Note:** The JDK `HttpClient` disables Basic authentication for HTTPS tunneling (`CONNECT`) by default (`jdk.http.auth.tunneling.disabledSchemes`). For proxies requiring Basic authentication, plain HTTP to Operaton is supported; for HTTPS through an authenticating proxy, ensure the JVM's `jdk.http.auth.tunneling.disabledSchemes` networking property is configured accordingly or use an unauthenticated proxy.
 
 ### Automatic Background Lock Extension Engine
 
