@@ -17,6 +17,8 @@ import java.util.function.Consumer;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import org.apache.nifi.annotation.configuration.DefaultSettings;
+import org.apache.nifi.annotation.documentation.MultiProcessorUseCase;
+import org.apache.nifi.annotation.documentation.UseCase;
 import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.ConfigVerificationResult.Outcome;
 import org.apache.nifi.processor.ProcessContext;
@@ -617,5 +619,25 @@ public class ExternalTaskProcessorsTest {
         DefaultSettings defaultSettings = FetchAndLockExternalTasks.class.getAnnotation(DefaultSettings.class);
         assertNotNull(defaultSettings);
         assertEquals("5 sec", defaultSettings.yieldDuration());
+    }
+
+    @Test
+    public void testMultiProcessorUseCaseAnnotation() {
+        MultiProcessorUseCase useCase = FetchAndLockExternalTasks.class.getAnnotation(MultiProcessorUseCase.class);
+        assertNotNull(useCase);
+        assertTrue(useCase.description().contains("Fetch external tasks from Operaton"));
+        assertEquals(4, useCase.configurations().length);
+        assertEquals(FetchAndLockExternalTasks.class, useCase.configurations()[0].processorClass());
+        assertEquals(CompleteExternalTask.class, useCase.configurations()[1].processorClass());
+        assertEquals(HandleExternalTaskBpmnError.class, useCase.configurations()[2].processorClass());
+        assertEquals(HandleExternalTaskFailure.class, useCase.configurations()[3].processorClass());
+    }
+
+    @Test
+    public void testHandleExternalTaskFailureUseCaseAnnotation() {
+        UseCase useCase = HandleExternalTaskFailure.class.getAnnotation(UseCase.class);
+        assertNotNull(useCase);
+        assertEquals("Retry with incident after N failures", useCase.description());
+        assertTrue(useCase.configuration().contains("Retries"));
     }
 }

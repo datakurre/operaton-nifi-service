@@ -13,6 +13,8 @@ import org.apache.nifi.annotation.behavior.WritesAttribute;
 import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.configuration.DefaultSettings;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
+import org.apache.nifi.annotation.documentation.MultiProcessorUseCase;
+import org.apache.nifi.annotation.documentation.ProcessorConfiguration;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
@@ -44,6 +46,45 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
         + "by the External Task Service until the task is finished.")
 @SeeAlso({CompleteExternalTask.class, HandleExternalTaskFailure.class,
         HandleExternalTaskBpmnError.class, UnlockExternalTask.class})
+@MultiProcessorUseCase(
+        description = "Fetch external tasks from Operaton, process each task through intermediate NiFi processors, and complete the task in Operaton upon success, or handle BPMN errors and technical failures.",
+        configurations = {
+                @ProcessorConfiguration(
+                        processorClass = FetchAndLockExternalTasks.class,
+                        configuration = """
+                                Connect 'External Task Service' to an OperatonExternalTaskService.
+                                Configure 'Topic Name' matching the BPMN Service Task topic.
+                                Optionally configure 'Lock Duration' (e.g. 20 sec) and 'Long Polling Timeout'.
+                                Route 'success' to downstream processing processors.
+                                """
+                ),
+                @ProcessorConfiguration(
+                        processorClass = CompleteExternalTask.class,
+                        configuration = """
+                                Connect 'External Task Service' to the same OperatonExternalTaskService.
+                                Connect successful processing flowfiles to this processor.
+                                Optionally configure 'Variables Format' and variable inclusion/exclusion.
+                                Auto-terminate or route 'success', 'retry', and 'failure'.
+                                """
+                ),
+                @ProcessorConfiguration(
+                        processorClass = HandleExternalTaskBpmnError.class,
+                        configuration = """
+                                Connect 'External Task Service' to the same OperatonExternalTaskService.
+                                Connect flowfiles encountering expected business or domain errors.
+                                Set 'Error Code' (e.g. from an attribute or static code) and optional 'Error Message'.
+                                """
+                ),
+                @ProcessorConfiguration(
+                        processorClass = HandleExternalTaskFailure.class,
+                        configuration = """
+                                Connect 'External Task Service' to the same OperatonExternalTaskService.
+                                Connect flowfiles encountering unrecoverable technical failures.
+                                Set 'Error Message', 'Retries' (e.g. decremented count), and 'Retry Timeout'.
+                                """
+                )
+        }
+)
 @WritesAttributes({
         @WritesAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id"),
         @WritesAttribute(attribute = ExternalTaskAttributes.TOPIC_NAME, description = "Topic name"),

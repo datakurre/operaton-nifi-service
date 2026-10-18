@@ -11,6 +11,7 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.annotation.documentation.UseCase;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
@@ -25,6 +26,16 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
         + "retried after the retry timeout while retries remain; when retries reach 0, "
         + "Operaton creates an incident.")
 @SeeAlso({FetchAndLockExternalTasks.class})
+@UseCase(
+        description = "Retry with incident after N failures",
+        configuration = """
+                Set 'External Task Service' to the OperatonExternalTaskService.
+                Set 'Error Message' from FlowFile attributes (e.g. '${operaton.error.message}') or expression language.
+                Set 'Retries' (e.g. '${operaton.retries:minus(1)}' or static decrement) and 'Retry Timeout' (e.g. '30 sec').
+                When 'Retries' reaches 0, Operaton automatically raises an incident in Cockpit without retrying.
+                Route 'retry' for transient communication issues with Operaton, and 'failure' for unrecoverable errors.
+                """
+)
 @ReadsAttributes({
         @ReadsAttribute(attribute = ExternalTaskAttributes.ID, description = "External task id (default)"),
         @ReadsAttribute(attribute = ExternalTaskAttributes.RETRIES,
