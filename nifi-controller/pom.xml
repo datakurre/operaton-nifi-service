@@ -29,6 +29,7 @@
     <packaging>pom</packaging>
 
     <properties>
+        <!-- Must change together with the parent version and devenv/modules/nifi.nix -->
         <nifi.version>2.11.0</nifi.version>
     </properties>
 

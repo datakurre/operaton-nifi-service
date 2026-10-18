@@ -15,6 +15,7 @@ let
 
   # nixpkgs only packages NiFi 1.x; extensions in this repository target the
   # NiFi 2.x API, so the official binary distribution is packaged here.
+  # Must change together with <nifi.version> and parent <version> in bundle POMs.
   nifi = pkgs.stdenvNoCC.mkDerivation rec {
     pname = "nifi";
     version = "2.11.0";
