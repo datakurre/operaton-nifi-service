@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +41,7 @@ import org.apache.nifi.proxy.ProxyConfiguration;
 import org.apache.nifi.proxy.ProxyConfigurationService;
 import org.apache.nifi.reporting.InitializationException;
 import org.apache.nifi.ssl.SSLContextProvider;
+import org.apache.nifi.util.MockPropertyConfiguration;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
 import org.junit.jupiter.api.AfterEach;
@@ -251,6 +253,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testBasicAuthentication() throws Exception {
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.BASIC.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.USERNAME, "demo");
         runner.setProperty(service, StandardOperatonExternalTaskService.PASSWORD, "secret");
         runner.enableControllerService(service);
@@ -264,6 +267,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testBearerTokenAuthentication() throws Exception {
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.BEARER.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "my-jwt-token");
         runner.enableControllerService(service);
 
@@ -275,6 +279,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2ServiceAccountAuthentication() throws Exception {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "operaton-client");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "top-secret");
@@ -298,6 +303,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2ServiceAccountWithScope() throws Exception {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
@@ -314,6 +320,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2ServiceAccountTokenCachingAndRefresh() throws Exception {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
@@ -349,6 +356,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2ServiceAccountRetryOn401Unauthorized() throws Exception {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
@@ -408,6 +416,7 @@ public class TestStandardOperatonExternalTaskService {
 
     @Test
     public void testOAuth2ServiceAccountValidation() {
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
         // Only endpoint configured -> invalid
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
@@ -425,6 +434,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2ServiceAccountTokenEndpointError() {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "bad-client");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "wrong-secret");
@@ -444,6 +454,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.addControllerService("oauth2-provider", provider);
         runner.enableControllerService(provider);
 
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
         runner.enableControllerService(service);
 
@@ -458,6 +469,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.addControllerService("oauth2-provider", provider);
         runner.enableControllerService(provider);
 
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
         runner.enableControllerService(service);
 
@@ -493,6 +505,7 @@ public class TestStandardOperatonExternalTaskService {
     @Test
     public void testOAuth2RetryFailsWhenRefreshedTokenAlsoRejected() {
         String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-app");
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret123");
@@ -522,33 +535,141 @@ public class TestStandardOperatonExternalTaskService {
     }
 
     @Test
-    public void testAuthenticationMutualExclusivityValidation() {
-        String tokenUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/oauth/token";
+    public void testAuthenticationStrategyValidation() {
+        // Default NONE -> valid
+        runner.assertValid(service);
 
-        // Direct OAuth2 + Bearer Token -> invalid
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, tokenUrl);
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client-id");
-        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret");
-        runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "static-token");
+        // BASIC: invalid without username, valid with username, valid with username + password
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.BASIC.getValue());
         runner.assertNotValid(service);
-
-        // Bearer Token + Basic Auth -> invalid
-        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT);
-        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID);
-        runner.removeProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET);
         runner.setProperty(service, StandardOperatonExternalTaskService.USERNAME, "user");
+        runner.assertValid(service);
         runner.setProperty(service, StandardOperatonExternalTaskService.PASSWORD, "pass");
-        runner.assertNotValid(service);
+        runner.assertValid(service);
 
-        // Password without Username -> invalid
-        runner.removeProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN);
-        runner.removeProperty(service, StandardOperatonExternalTaskService.USERNAME);
+        // BEARER: invalid without token, valid with token
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.BEARER.getValue());
         runner.assertNotValid(service);
+        runner.setProperty(service, StandardOperatonExternalTaskService.BEARER_TOKEN, "token");
+        runner.assertValid(service);
 
-        // Scope without Endpoint -> invalid
-        runner.removeProperty(service, StandardOperatonExternalTaskService.PASSWORD);
+        // OAUTH2_PROVIDER: invalid without provider, valid with provider
+        MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider();
+        try {
+            runner.addControllerService("val-provider", provider);
+            runner.enableControllerService(provider);
+        } catch (InitializationException e) {
+            throw new RuntimeException(e);
+        }
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
+        runner.assertNotValid(service);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "val-provider");
+        runner.assertValid(service);
+
+        // OAUTH2_CLIENT_CREDENTIALS: invalid if missing any required property
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue());
+        runner.assertNotValid(service);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_TOKEN_ENDPOINT, "http://localhost/token");
+        runner.assertNotValid(service);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_ID, "client");
+        runner.assertNotValid(service);
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_CLIENT_SECRET, "secret");
+        runner.assertValid(service);
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_SCOPE, "read");
-        runner.assertNotValid(service);
+        runner.assertValid(service);
+    }
+
+    @Test
+    public void testMigratePropertiesRemovesAutomaticLockExtension() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("Automatic Lock Extension", "true");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertFalse(config.hasProperty("Automatic Lock Extension"));
+    }
+
+    @Test
+    public void testMigratePropertiesOAuth2ProviderPrecedence() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("OAuth2 Access Token Provider", "provider-id");
+        originalProps.put("OAuth2 Token Endpoint", "http://localhost/token");
+        originalProps.put("OAuth2 Client ID", "client");
+        originalProps.put("OAuth2 Client Secret", "secret");
+        originalProps.put("Bearer Token", "bearer");
+        originalProps.put("Username", "user");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.OAUTH2_PROVIDER.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
+    }
+
+    @Test
+    public void testMigratePropertiesOAuth2ClientCredentialsPrecedence() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("OAuth2 Token Endpoint", "http://localhost/token");
+        originalProps.put("OAuth2 Client ID", "client");
+        originalProps.put("OAuth2 Client Secret", "secret");
+        originalProps.put("Bearer Token", "bearer");
+        originalProps.put("Username", "user");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
+    }
+
+    @Test
+    public void testMigratePropertiesBearerPrecedence() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("Bearer Token", "bearer");
+        originalProps.put("Username", "user");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.BEARER.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
+    }
+
+    @Test
+    public void testMigratePropertiesBasicPrecedence() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("Username", "user");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.BASIC.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
+    }
+
+    @Test
+    public void testMigratePropertiesNonePrecedence() {
+        Map<String, String> originalProps = new HashMap<>();
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.NONE.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
+    }
+
+    @Test
+    public void testMigratePropertiesDoesNotOverwriteExistingStrategy() {
+        Map<String, String> originalProps = new HashMap<>();
+        originalProps.put("Authentication Strategy", "NONE");
+        originalProps.put("Username", "user");
+        MockPropertyConfiguration config = new MockPropertyConfiguration(originalProps);
+
+        service.migrateProperties(config);
+
+        assertEquals(AuthenticationStrategy.NONE.getValue(),
+                config.getPropertyValue("Authentication Strategy").orElse(null));
     }
 
     @Test
@@ -562,6 +683,7 @@ public class TestStandardOperatonExternalTaskService {
         runner.addControllerService("blank-provider", provider);
         runner.enableControllerService(provider);
 
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
         runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "blank-provider");
         runner.enableControllerService(service);
 

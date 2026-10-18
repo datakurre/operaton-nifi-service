@@ -979,6 +979,7 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
         {
             "Operaton REST URL": "#{url}",
             "Worker ID": "#{worker_id}",
+            "Authentication Strategy": "BASIC",
             "Username": "#{username}",
             "Password": "#{password}",
         }
@@ -986,6 +987,7 @@ def configure_nifi(nifi_addr, vault_addr, vault_token, operaton_url="http://loca
         else {
             "Operaton REST URL": operaton_url,
             "Worker ID": "nifi-worker",
+            "Authentication Strategy": "BASIC",
             "Username": OPERATON_USER,
             "Password": OPERATON_PASS,
         }

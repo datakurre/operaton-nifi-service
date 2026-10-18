@@ -42,14 +42,15 @@ The controller service wraps the Operaton External Task REST API, maintains acti
 | **Worker ID** | `nifi-${hostname()}` | No | Yes (EL: `ENVIRONMENT`) | Unique identifier for the worker node holding the task lock. |
 | **SSL Context Service** | *(none)* | No | No | SSL Context Service providing trust store (and key store for mutual TLS) for HTTPS connections to Operaton and OAuth2 Token Endpoint. JVM default trust store is used when not set. |
 | **Proxy Configuration Service** | *(none)* | No | No | Specifies the Proxy Configuration Controller Service to proxy network requests to Operaton. |
-| **OAuth2 Access Token Provider** | *(none)* | No | No | Optional controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 tokens. |
-| **OAuth2 Token Endpoint** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | Token URL for dynamic `client_credentials` grant authentication. Automatically fetches, caches, and refreshes tokens. |
-| **OAuth2 Client ID** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | OAuth2 Client ID for service account authentication. |
-| **OAuth2 Client Secret** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | OAuth2 Client Secret (sensitive; for Vault / Parameter Contexts). |
-| **OAuth2 Scope** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | Optional scope(s) for the OAuth2 client credentials grant. |
-| **Bearer Token** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | Fixed Bearer / JWT token for static authorization headers. |
-| **Username** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth username (`#{username}`). |
-| **Password** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth password (sensitive; `#{password}`). |
+| **Authentication Strategy** | `None` | No | No | How requests to the Operaton REST API are authenticated. Allowable values: `None`, `HTTP Basic`, `Bearer Token`, `OAuth2 Access Token Provider`, `OAuth2 Client Credentials`. Dependent credential properties are displayed and validated based on this selection. |
+| **OAuth2 Access Token Provider** | *(none)* | No | No | Controller service reference (`OAuth2AccessTokenProvider`) for managed OAuth2 tokens. Required when Authentication Strategy is `OAuth2 Access Token Provider`. |
+| **OAuth2 Token Endpoint** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | Token URL for dynamic `client_credentials` grant authentication. Required when Authentication Strategy is `OAuth2 Client Credentials`. |
+| **OAuth2 Client ID** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | OAuth2 Client ID for service account authentication. Required when Authentication Strategy is `OAuth2 Client Credentials`. |
+| **OAuth2 Client Secret** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | OAuth2 Client Secret (sensitive; for Vault / Parameter Contexts). Required when Authentication Strategy is `OAuth2 Client Credentials`. |
+| **OAuth2 Scope** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | Optional scope(s) for the OAuth2 client credentials grant. Shown when Authentication Strategy is `OAuth2 Client Credentials`. |
+| **Bearer Token** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | Fixed Bearer / JWT token for static authorization headers. Required when Authentication Strategy is `Bearer Token`. |
+| **Username** | *(none)* | No | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth username (`#{username}`). Required when Authentication Strategy is `HTTP Basic`. |
+| **Password** | *(none)* | Yes | Yes (EL: `ENVIRONMENT`) | HTTP Basic Auth password (sensitive; `#{password}`). Shown when Authentication Strategy is `HTTP Basic`. |
 | **Request Timeout** | `30 sec` | No | No | HTTP request timeout for REST API invocations (long polling timeout is added on top). |
 | **Max Lock Lifetime** | `1 hour` | No | No | Upper bound on how long a single task lock can be continuously extended. |
 

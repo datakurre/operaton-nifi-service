@@ -94,12 +94,21 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE =
             ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
 
+    public static final PropertyDescriptor AUTHENTICATION_STRATEGY = new PropertyDescriptor.Builder()
+            .name("Authentication Strategy")
+            .description("How requests to the Operaton REST API are authenticated")
+            .required(true)
+            .allowableValues(AuthenticationStrategy.class)
+            .defaultValue(AuthenticationStrategy.NONE)
+            .build();
+
     public static final PropertyDescriptor OAUTH2_ACCESS_TOKEN_PROVIDER = new PropertyDescriptor.Builder()
             .name("OAuth2 Access Token Provider")
-            .description("Optional controller service providing OAuth2 access tokens. If set, takes precedence "
+            .description("OAuth2 Access Token Provider Controller Service. Recommended for OAuth2 authentication "
                     + "over direct service account properties.")
             .identifiesControllerService(OAuth2AccessTokenProvider.class)
-            .required(false)
+            .required(true)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_PROVIDER)
             .build();
 
     public static final PropertyDescriptor OAUTH2_TOKEN_ENDPOINT = new PropertyDescriptor.Builder()
@@ -107,28 +116,29 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .description("OAuth2 Token Endpoint URL for service account authentication via client_credentials grant, "
                     + "e.g. https://auth.example.com/oauth/token. When configured along with Client ID and Secret, "
                     + "tokens are automatically fetched, cached, and refreshed before expiration.")
-            .required(false)
+            .required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.URL_VALIDATOR)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
     public static final PropertyDescriptor OAUTH2_CLIENT_ID = new PropertyDescriptor.Builder()
             .name("OAuth2 Client ID")
             .description("OAuth2 Client ID for service account authentication")
-            .required(false)
+            .required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .dependsOn(OAUTH2_TOKEN_ENDPOINT)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
     public static final PropertyDescriptor OAUTH2_CLIENT_SECRET = new PropertyDescriptor.Builder()
             .name("OAuth2 Client Secret")
             .description("OAuth2 Client Secret for service account authentication")
-            .required(false)
+            .required(true)
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .dependsOn(OAUTH2_CLIENT_ID)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
     public static final PropertyDescriptor OAUTH2_SCOPE = new PropertyDescriptor.Builder()
@@ -137,25 +147,27 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .required(false)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .dependsOn(OAUTH2_TOKEN_ENDPOINT)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS)
             .build();
 
     public static final PropertyDescriptor BEARER_TOKEN = new PropertyDescriptor.Builder()
             .name("Bearer Token")
             .description("Fixed Bearer token for HTTP OAuth2 / token authentication. Used when OAuth2 "
                     + "service account / provider is not configured; takes precedence over Username/Password.")
-            .required(false)
+            .required(true)
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.BEARER)
             .build();
 
     public static final PropertyDescriptor USERNAME = new PropertyDescriptor.Builder()
             .name("Username")
             .description("Username for HTTP basic authentication")
-            .required(false)
+            .required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.BASIC)
             .build();
 
     public static final PropertyDescriptor PASSWORD = new PropertyDescriptor.Builder()
@@ -165,7 +177,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .dependsOn(USERNAME)
+            .dependsOn(AUTHENTICATION_STRATEGY, AuthenticationStrategy.BASIC)
             .build();
 
     public static final PropertyDescriptor REQUEST_TIMEOUT = new PropertyDescriptor.Builder()
@@ -201,6 +213,7 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             WORKER_ID,
             SSL_CONTEXT_SERVICE,
             PROXY_CONFIGURATION_SERVICE,
+            AUTHENTICATION_STRATEGY,
             OAUTH2_ACCESS_TOKEN_PROVIDER,
             OAUTH2_TOKEN_ENDPOINT,
             OAUTH2_CLIENT_ID,
@@ -239,58 +252,6 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
         final List<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
         ProxyConfiguration.validateProxySpec(validationContext, results, ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
-
-        final boolean hasEndpoint = validationContext.getProperty(OAUTH2_TOKEN_ENDPOINT).isSet();
-        final boolean hasClientId = validationContext.getProperty(OAUTH2_CLIENT_ID).isSet();
-        final boolean hasClientSecret = validationContext.getProperty(OAUTH2_CLIENT_SECRET).isSet();
-        final boolean hasScope = validationContext.getProperty(OAUTH2_SCOPE).isSet();
-
-        final boolean hasProvider = validationContext.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).isSet();
-        final boolean hasDirectOAuth2 = hasEndpoint || hasClientId || hasClientSecret;
-        final boolean hasBearer = validationContext.getProperty(BEARER_TOKEN).isSet();
-        final boolean hasUsername = validationContext.getProperty(USERNAME).isSet();
-        final boolean hasPassword = validationContext.getProperty(PASSWORD).isSet();
-
-        if (hasEndpoint || hasClientId || hasClientSecret) {
-            if (!hasEndpoint || !hasClientId || !hasClientSecret) {
-                results.add(new ValidationResult.Builder()
-                        .subject("OAuth2 Service Account")
-                        .valid(false)
-                        .explanation("OAuth2 Token Endpoint, OAuth2 Client ID, and OAuth2 Client Secret must all be configured together.")
-                        .build());
-            }
-        }
-
-        if (hasScope && !hasEndpoint) {
-            results.add(new ValidationResult.Builder()
-                    .subject("OAuth2 Scope")
-                    .valid(false)
-                    .explanation("OAuth2 Scope cannot be configured without OAuth2 Token Endpoint.")
-                    .build());
-        }
-
-        if (hasPassword && !hasUsername) {
-            results.add(new ValidationResult.Builder()
-                    .subject("Password")
-                    .valid(false)
-                    .explanation("Password cannot be configured without Username.")
-                    .build());
-        }
-
-        int authCount = (hasProvider ? 1 : 0)
-                + (hasDirectOAuth2 ? 1 : 0)
-                + (hasBearer ? 1 : 0)
-                + ((hasUsername || hasPassword) ? 1 : 0);
-
-        if (authCount > 1) {
-            results.add(new ValidationResult.Builder()
-                    .subject("Authentication Configuration")
-                    .valid(false)
-                    .explanation("Only one authentication method may be configured: OAuth2 Access Token Provider, "
-                            + "Direct OAuth2 Service Account, Bearer Token, or HTTP Basic Authentication.")
-                    .build());
-        }
-
         return results;
     }
 
@@ -298,6 +259,24 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
     public void migrateProperties(final PropertyConfiguration config) {
         // Extension is always automatic now, see Lock Extension in the README
         config.removeProperty("Automatic Lock Extension");
+
+        if (!config.hasProperty("Authentication Strategy")) {
+            final AuthenticationStrategy strategy;
+            if (config.isPropertySet(OAUTH2_ACCESS_TOKEN_PROVIDER.getName())) {
+                strategy = AuthenticationStrategy.OAUTH2_PROVIDER;
+            } else if (config.isPropertySet(OAUTH2_TOKEN_ENDPOINT.getName())
+                    && config.isPropertySet(OAUTH2_CLIENT_ID.getName())
+                    && config.isPropertySet(OAUTH2_CLIENT_SECRET.getName())) {
+                strategy = AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS;
+            } else if (config.isPropertySet(BEARER_TOKEN.getName())) {
+                strategy = AuthenticationStrategy.BEARER;
+            } else if (config.isPropertySet(USERNAME.getName())) {
+                strategy = AuthenticationStrategy.BASIC;
+            } else {
+                strategy = AuthenticationStrategy.NONE;
+            }
+            config.setProperty("Authentication Strategy", strategy.getValue());
+        }
     }
 
     @OnEnabled
@@ -312,38 +291,53 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
 
         client = createHttpClient(context);
 
-        PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
-        if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
-            oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
-            tokenManager = null;
-            staticAuthorization = null;
-        } else {
-            oauth2Provider = null;
-            String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
-            String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
-            String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
-            String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
+        PropertyValue authStrategyProp = context.getProperty(AUTHENTICATION_STRATEGY);
+        AuthenticationStrategy strategy = AuthenticationStrategy.NONE;
+        if (authStrategyProp != null && authStrategyProp.isSet()) {
+            try {
+                strategy = AuthenticationStrategy.valueOf(authStrategyProp.getValue());
+            } catch (IllegalArgumentException e) {
+                strategy = AuthenticationStrategy.NONE;
+            }
+        }
 
-            if (tokenEndpoint != null && !tokenEndpoint.isBlank()
-                    && clientId != null && !clientId.isBlank()
-                    && clientSecret != null && !clientSecret.isBlank()) {
-                tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
-                        clientSecret, scope, requestTimeout, mapper);
-                staticAuthorization = null;
-            } else {
-                tokenManager = null;
+        oauth2Provider = null;
+        tokenManager = null;
+        staticAuthorization = null;
+
+        switch (strategy) {
+            case OAUTH2_PROVIDER -> {
+                PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
+                if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
+                    oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
+                }
+            }
+            case OAUTH2_CLIENT_CREDENTIALS -> {
+                String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
+                String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
+                String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
+                String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
+                if (tokenEndpoint != null && clientId != null && clientSecret != null) {
+                    tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
+                            clientSecret, scope, requestTimeout, mapper);
+                }
+            }
+            case BEARER -> {
                 String bearerToken = context.getProperty(BEARER_TOKEN).evaluateAttributeExpressions().getValue();
-                String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
                 if (bearerToken != null && !bearerToken.isBlank()) {
                     staticAuthorization = "Bearer " + bearerToken.trim();
-                } else if (username != null) {
+                }
+            }
+            case BASIC -> {
+                String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
+                if (username != null) {
                     String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
                     String credentials = username + ":" + (password == null ? "" : password);
                     staticAuthorization = "Basic " + Base64.getEncoder()
                             .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-                } else {
-                    staticAuthorization = null;
                 }
+            }
+            case NONE -> {
             }
         }
 
