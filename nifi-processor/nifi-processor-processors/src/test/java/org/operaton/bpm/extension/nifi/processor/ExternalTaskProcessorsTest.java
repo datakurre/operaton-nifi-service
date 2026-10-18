@@ -14,6 +14,8 @@ import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import org.apache.nifi.components.ConfigVerificationResult;
+import org.apache.nifi.components.ConfigVerificationResult.Outcome;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.reporting.InitializationException;
@@ -385,5 +387,109 @@ public class ExternalTaskProcessorsTest {
         runner.assertAllFlowFilesTransferred(AbstractExternalTaskProcessor.REL_SUCCESS, 1);
         assertEquals("unlock", service.lastCall().method());
         assertEquals(List.of("task-99"), service.lastCall().args());
+    }
+
+    @Test
+    public void testVerifyLockDurationTooShort() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        runner.setProperty(FetchAndLockExternalTasks.LOCK_DURATION, "2 sec");
+
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+
+        ConfigVerificationResult lockStep = results.get(0);
+        assertEquals("Lock Duration", lockStep.getVerificationStepName());
+        assertEquals(Outcome.FAILED, lockStep.getOutcome());
+        assertTrue(lockStep.getExplanation().contains("must be at least 3 seconds"));
+
+        ConfigVerificationResult pendingStep = results.get(1);
+        assertEquals("Pending Tasks", pendingStep.getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, pendingStep.getOutcome());
+    }
+
+    @Test
+    public void testVerifySuccessfulWithTasks() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        runner.setProperty(FetchAndLockExternalTasks.LOCK_DURATION, "10 sec");
+        service.pendingTaskCount = 5L;
+
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+
+        ConfigVerificationResult lockStep = results.get(0);
+        assertEquals("Lock Duration", lockStep.getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, lockStep.getOutcome());
+
+        ConfigVerificationResult pendingStep = results.get(1);
+        assertEquals("Pending Tasks", pendingStep.getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, pendingStep.getOutcome());
+        assertTrue(pendingStep.getExplanation().contains("Found 5 pending unlocked task(s) ready for topic 'orders'"));
+
+        assertTrue(service.calls.stream().noneMatch(c -> c.method().startsWith("fetchAndLock")));
+    }
+
+    @Test
+    public void testVerifySuccessfulWithZeroTasks() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        service.pendingTaskCount = 0L;
+
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+
+        ConfigVerificationResult pendingStep = results.get(1);
+        assertEquals("Pending Tasks", pendingStep.getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, pendingStep.getOutcome());
+        assertTrue(pendingStep.getExplanation().contains("Found 0 pending tasks"));
+    }
+
+    @Test
+    public void testVerifyPendingTasksUnsupported() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        service.throwUnsupportedOnCount = true;
+
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+
+        ConfigVerificationResult pendingStep = results.get(1);
+        assertEquals("Pending Tasks", pendingStep.getVerificationStepName());
+        assertEquals(Outcome.SKIPPED, pendingStep.getOutcome());
+        assertTrue(pendingStep.getExplanation().contains("does not support task counting"));
+    }
+
+    @Test
+    public void testVerifyPendingTasksFailure() throws Exception {
+        TestRunner runner = runner(FetchAndLockExternalTasks.class);
+        runner.setProperty(FetchAndLockExternalTasks.TOPIC_NAME, "orders");
+        service.failure = new OperatonException("Database down", 500);
+
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+
+        ConfigVerificationResult pendingStep = results.get(1);
+        assertEquals("Pending Tasks", pendingStep.getVerificationStepName());
+        assertEquals(Outcome.FAILED, pendingStep.getOutcome());
+        assertTrue(pendingStep.getExplanation().contains("Database down"));
+    }
+
+    @Test
+    public void testVerifyMissingTopicOrService() throws Exception {
+        TestRunner runner = TestRunners.newTestRunner(FetchAndLockExternalTasks.class);
+        List<ConfigVerificationResult> results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+        assertEquals(Outcome.FAILED, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("External Task Service is not configured"));
+
+        MockExternalTaskService mockSvc = new MockExternalTaskService();
+        runner.addControllerService("svc", mockSvc);
+        runner.enableControllerService(mockSvc);
+        runner.setProperty(AbstractExternalTaskProcessor.SERVICE, "svc");
+        results = runner.verify(Map.of());
+        assertEquals(2, results.size());
+        assertEquals(Outcome.FAILED, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("Topic Name is not configured"));
     }
 }

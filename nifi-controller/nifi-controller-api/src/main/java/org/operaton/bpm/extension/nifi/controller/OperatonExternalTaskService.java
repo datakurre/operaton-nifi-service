@@ -121,4 +121,16 @@ public interface OperatonExternalTaskService extends ControllerService {
      * Unlock a locked external task so that it can be fetched again immediately.
      */
     void unlock(String taskId) throws OperatonException;
+
+    /**
+     * Query the number of external tasks matching the topic name that are currently not locked.
+     *
+     * @param topicName external task topic name
+     * @return count of pending unlocked tasks
+     * @throws UnsupportedOperationException if this service does not support task counting
+     * @throws OperatonException on API error
+     */
+    default long countTasks(String topicName) throws OperatonException {
+        throw new UnsupportedOperationException("countTasks not supported");
+    }
 }

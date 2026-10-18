@@ -33,6 +33,8 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.apache.nifi.components.ConfigVerificationResult;
+import org.apache.nifi.components.ConfigVerificationResult.Outcome;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.oauth2.AccessToken;
@@ -53,7 +55,10 @@ public class TestStandardOperatonExternalTaskService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** A request received by the stub Operaton REST API. */
-    private record Request(String path, String authorization, JsonNode body) {
+    private record Request(String path, String query, String authorization, JsonNode body) {
+        Request(String path, String authorization, JsonNode body) {
+            this(path, null, authorization, body);
+        }
     }
 
     /** A request received by the stub OAuth2 token endpoint. */
@@ -120,6 +125,7 @@ public class TestStandardOperatonExternalTaskService {
         byte[] in = exchange.getRequestBody().readAllBytes();
         synchronized (requests) {
             requests.add(new Request(exchange.getRequestURI().getPath(),
+                    exchange.getRequestURI().getQuery(),
                     exchange.getRequestHeaders().getFirst("Authorization"),
                     in.length == 0 ? null : MAPPER.readTree(in)));
         }
@@ -1147,8 +1153,21 @@ public class TestStandardOperatonExternalTaskService {
         private String token = "mock-provider-token";
         private int refreshCount = 0;
 
+        private boolean throwOnGet = false;
+
+        public void setToken(String token) {
+            this.token = token;
+        }
+
+        public void setThrowOnGet(boolean throwOnGet) {
+            this.throwOnGet = throwOnGet;
+        }
+
         @Override
         public AccessToken getAccessDetails() {
+            if (throwOnGet) {
+                throw new IllegalStateException("Token service unavailable");
+            }
             return new AccessToken(token, null, "Bearer", 3600L, null);
         }
 
@@ -1161,5 +1180,142 @@ public class TestStandardOperatonExternalTaskService {
         public int getRefreshCount() {
             return refreshCount;
         }
+    }
+
+    @Test
+    public void testVerifySuccessful() {
+        responseStatus = 200;
+        responseBody = "{\"version\": \"1.0.0\"}";
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+
+        assertEquals(2, results.size());
+        assertEquals("Authentication", results.get(0).getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+
+        assertEquals("Operaton Connectivity", results.get(1).getVerificationStepName());
+        assertEquals(Outcome.SUCCESSFUL, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("version 1.0.0"));
+
+        Request req = lastRequest();
+        assertEquals("/engine-rest/version", req.path());
+        assertNull(req.authorization());
+    }
+
+    @Test
+    public void testVerifyWithBasicAuth() {
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY,
+                AuthenticationStrategy.BASIC.getValue());
+        runner.setProperty(service, StandardOperatonExternalTaskService.USERNAME, "demo");
+        runner.setProperty(service, StandardOperatonExternalTaskService.PASSWORD, "secret");
+
+        responseStatus = 200;
+        responseBody = "{\"version\": \"7.20.0\"}";
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+
+        assertEquals(2, results.size());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+        assertEquals(Outcome.SUCCESSFUL, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("version 7.20.0"));
+
+        Request req = lastRequest();
+        assertEquals("/engine-rest/version", req.path());
+        assertEquals("Basic " + Base64.getEncoder().encodeToString("demo:secret".getBytes(StandardCharsets.UTF_8)),
+                req.authorization());
+    }
+
+    @Test
+    public void testVerifyCredentialsRejected401() {
+        responseStatus = 401;
+        responseBody = "{\"type\": \"Unauthorized\", \"message\": \"Bad credentials\"}";
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+
+        assertEquals(2, results.size());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+        assertEquals(Outcome.FAILED, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("Credentials rejected by Operaton REST API (HTTP 401)"));
+    }
+
+    @Test
+    public void testVerifyCredentialsRejected403() {
+        responseStatus = 403;
+        responseBody = "Forbidden";
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+
+        assertEquals(2, results.size());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+        assertEquals(Outcome.FAILED, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("Credentials rejected by Operaton REST API (HTTP 403)"));
+    }
+
+    @Test
+    public void testVerifyConnectionRefused() throws Exception {
+        int unusedPort;
+        try (var socket = new java.net.ServerSocket(0)) {
+            unusedPort = socket.getLocalPort();
+        }
+        runner.setProperty(service, StandardOperatonExternalTaskService.REST_URL,
+                "http://127.0.0.1:" + unusedPort + "/engine-rest");
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+
+        assertEquals(2, results.size());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+        assertEquals(Outcome.FAILED, results.get(1).getOutcome());
+        assertTrue(results.get(1).getExplanation().contains("Failed to connect to Operaton REST API"));
+    }
+
+    @Test
+    public void testVerifyOAuth2ProviderSuccessAndFailure() throws Exception {
+        MockOAuth2AccessTokenProvider provider = new MockOAuth2AccessTokenProvider();
+        runner.addControllerService("oauth2-provider", provider);
+        runner.enableControllerService(provider);
+
+        runner.setProperty(service, StandardOperatonExternalTaskService.AUTHENTICATION_STRATEGY,
+                AuthenticationStrategy.OAUTH2_PROVIDER.getValue());
+        runner.setProperty(service, StandardOperatonExternalTaskService.OAUTH2_ACCESS_TOKEN_PROVIDER, "oauth2-provider");
+
+        responseStatus = 200;
+        responseBody = "{\"version\": \"1.0.0\"}";
+
+        List<ConfigVerificationResult> results = runner.verify(service, Map.of());
+        assertEquals(2, results.size());
+        assertEquals(Outcome.SUCCESSFUL, results.get(0).getOutcome());
+        assertEquals(Outcome.SUCCESSFUL, results.get(1).getOutcome());
+        assertEquals("Bearer mock-provider-token", lastRequest().authorization());
+
+        provider.setThrowOnGet(true);
+        List<ConfigVerificationResult> failedResults = runner.verify(service, Map.of());
+        assertEquals(2, failedResults.size());
+        assertEquals(Outcome.FAILED, failedResults.get(0).getOutcome());
+        assertTrue(failedResults.get(0).getExplanation().contains("Token service unavailable"));
+        assertEquals(Outcome.SKIPPED, failedResults.get(1).getOutcome());
+        assertTrue(failedResults.get(1).getExplanation().contains("Skipped due to authentication failure"));
+    }
+
+    @Test
+    public void testCountTasks() throws Exception {
+        runner.enableControllerService(service);
+        responseStatus = 200;
+        responseBody = "{\"count\": 42}";
+
+        long count = service.countTasks("invoice-processing");
+        assertEquals(42L, count);
+
+        Request req = lastRequest();
+        assertEquals("/engine-rest/external-task/count", req.path());
+        assertNotNull(req.query());
+        assertTrue(req.query().contains("topicName=invoice-processing"));
+        assertTrue(req.query().contains("notLocked=true"));
+    }
+
+    @Test
+    public void testCountTasksEmptyTopicThrows() throws Exception {
+        runner.enableControllerService(service);
+        assertThrows(OperatonException.class, () -> service.countTasks(""));
+        assertThrows(OperatonException.class, () -> service.countTasks(null));
     }
 }

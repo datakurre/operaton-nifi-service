@@ -36,6 +36,7 @@ import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
 import org.apache.nifi.annotation.lifecycle.OnEnabled;
+import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.PropertyValue;
 import org.apache.nifi.components.ValidationContext;
@@ -43,7 +44,9 @@ import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
+import org.apache.nifi.controller.VerifiableControllerService;
 import org.apache.nifi.expression.ExpressionLanguageScope;
+import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.migration.PropertyConfiguration;
 import org.apache.nifi.oauth2.AccessToken;
 import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
@@ -61,7 +64,7 @@ import org.apache.nifi.ssl.SSLContextProvider;
 @Stateful(scopes = Scope.LOCAL, description = "The external tasks locked by this node and their lock "
         + "durations, so that their locks are still extended after a restart.")
 public class StandardOperatonExternalTaskService extends AbstractControllerService
-        implements OperatonExternalTaskService {
+        implements OperatonExternalTaskService, VerifiableControllerService {
 
     public static final PropertyDescriptor REST_URL = new PropertyDescriptor.Builder()
             .name("Operaton REST URL")
@@ -299,76 +302,20 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
     }
 
-    @OnEnabled
-    public void onEnabled(final ConfigurationContext context) {
-        // In case a previous enabling failed without the service being disabled
-        stopLockExtension();
-        String url = context.getProperty(REST_URL).evaluateAttributeExpressions().getValue();
-        baseUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-        workerId = context.getProperty(WORKER_ID).evaluateAttributeExpressions().getValue();
-        requestTimeout = Duration.ofMillis(
-                context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
-
-        client = createHttpClient(context);
-
-        PropertyValue authStrategyProp = context.getProperty(AUTHENTICATION_STRATEGY);
-        AuthenticationStrategy strategy = AuthenticationStrategy.NONE;
-        if (authStrategyProp != null && authStrategyProp.isSet()) {
-            try {
-                strategy = AuthenticationStrategy.valueOf(authStrategyProp.getValue());
-            } catch (IllegalArgumentException e) {
-                strategy = AuthenticationStrategy.NONE;
-            }
-        }
-
-        oauth2Provider = null;
-        tokenManager = null;
-        staticAuthorization = null;
-
-        switch (strategy) {
-            case OAUTH2_PROVIDER -> {
-                PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
-                if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
-                    oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
-                }
-            }
-            case OAUTH2_CLIENT_CREDENTIALS -> {
-                getLogger().warn("Authentication Strategy OAuth2 Client Credentials is deprecated; use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider instead");
-                String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
-                String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
-                String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
-                String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
-                if (tokenEndpoint != null && clientId != null && clientSecret != null) {
-                    tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
-                            clientSecret, scope, requestTimeout, mapper);
-                }
-            }
-            case BEARER -> {
-                String bearerToken = context.getProperty(BEARER_TOKEN).evaluateAttributeExpressions().getValue();
-                if (bearerToken != null && !bearerToken.isBlank()) {
-                    staticAuthorization = "Bearer " + bearerToken.trim();
-                }
-            }
-            case BASIC -> {
-                String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
-                if (username != null) {
-                    String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
-                    String credentials = username + ":" + (password == null ? "" : password);
-                    staticAuthorization = "Basic " + Base64.getEncoder()
-                            .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-                }
-            }
-            case NONE -> {
-            }
-        }
-
-        startLockExtension(context);
+    record ClientConfig(
+            HttpClient client,
+            String baseUrl,
+            Duration requestTimeout,
+            AuthenticationStrategy strategy,
+            OAuth2AccessTokenProvider oauth2Provider,
+            OAuth2TokenManager tokenManager,
+            String staticAuthorization) {
     }
 
-    private HttpClient createHttpClient(final ConfigurationContext context) {
+    private HttpClient createHttpClient(final ConfigurationContext context, final Duration connectTimeout) {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(requestTimeout);
+                .connectTimeout(connectTimeout);
 
         PropertyValue sslServiceProp = context.getProperty(SSL_CONTEXT_SERVICE);
         if (sslServiceProp != null && sslServiceProp.isSet()) {
@@ -397,6 +344,256 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
         }
 
         return builder.build();
+    }
+
+    private ClientConfig createClientConfig(final ConfigurationContext context) {
+        String url = context.getProperty(REST_URL).evaluateAttributeExpressions().getValue();
+        String baseUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        Duration requestTimeout = Duration.ofMillis(
+                context.getProperty(REQUEST_TIMEOUT).asTimePeriod(TimeUnit.MILLISECONDS));
+
+        HttpClient client = createHttpClient(context, requestTimeout);
+
+        PropertyValue authStrategyProp = context.getProperty(AUTHENTICATION_STRATEGY);
+        AuthenticationStrategy strategy = AuthenticationStrategy.NONE;
+        if (authStrategyProp != null && authStrategyProp.isSet()) {
+            try {
+                strategy = AuthenticationStrategy.valueOf(authStrategyProp.getValue());
+            } catch (IllegalArgumentException e) {
+                strategy = AuthenticationStrategy.NONE;
+            }
+        }
+
+        OAuth2AccessTokenProvider oauth2Provider = null;
+        OAuth2TokenManager tokenManager = null;
+        String staticAuthorization = null;
+
+        switch (strategy) {
+            case OAUTH2_PROVIDER -> {
+                PropertyValue oauth2ServiceProp = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER);
+                if (oauth2ServiceProp != null && oauth2ServiceProp.isSet()) {
+                    oauth2Provider = oauth2ServiceProp.asControllerService(OAuth2AccessTokenProvider.class);
+                }
+            }
+            case OAUTH2_CLIENT_CREDENTIALS -> {
+                String tokenEndpoint = context.getProperty(OAUTH2_TOKEN_ENDPOINT).evaluateAttributeExpressions().getValue();
+                String clientId = context.getProperty(OAUTH2_CLIENT_ID).evaluateAttributeExpressions().getValue();
+                String clientSecret = context.getProperty(OAUTH2_CLIENT_SECRET).evaluateAttributeExpressions().getValue();
+                String scope = context.getProperty(OAUTH2_SCOPE).evaluateAttributeExpressions().getValue();
+                if (tokenEndpoint != null && clientId != null && clientSecret != null) {
+                    tokenManager = new OAuth2TokenManager(client, tokenEndpoint.trim(), clientId.trim(),
+                            clientSecret, scope, requestTimeout, mapper);
+                }
+            }
+            case BEARER -> {
+                String bearerToken = context.getProperty(BEARER_TOKEN).evaluateAttributeExpressions().getValue();
+                if (bearerToken != null && !bearerToken.isBlank()) {
+                    staticAuthorization = "Bearer " + bearerToken.trim();
+                }
+            }
+            case BASIC -> {
+                String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
+                if (username != null) {
+                    String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
+                    String credentials = username + ":" + (password == null ? "" : password);
+                    staticAuthorization = "Basic " + Base64.getEncoder()
+                            .encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            case NONE -> {
+            }
+        }
+
+        return new ClientConfig(client, baseUrl, requestTimeout, strategy, oauth2Provider, tokenManager, staticAuthorization);
+    }
+
+    @OnEnabled
+    public void onEnabled(final ConfigurationContext context) {
+        // In case a previous enabling failed without the service being disabled
+        stopLockExtension();
+        workerId = context.getProperty(WORKER_ID).evaluateAttributeExpressions().getValue();
+
+        ClientConfig config = createClientConfig(context);
+        this.client = config.client();
+        this.baseUrl = config.baseUrl();
+        this.requestTimeout = config.requestTimeout();
+        this.oauth2Provider = config.oauth2Provider();
+        this.tokenManager = config.tokenManager();
+        this.staticAuthorization = config.staticAuthorization();
+
+        if (config.strategy() == AuthenticationStrategy.OAUTH2_CLIENT_CREDENTIALS) {
+            getLogger().warn("Authentication Strategy OAuth2 Client Credentials is deprecated; use OAuth2 Access Token Provider with a StandardOauth2AccessTokenProvider instead");
+        }
+
+        startLockExtension(context);
+    }
+
+    @Override
+    public List<ConfigVerificationResult> verify(final ConfigurationContext context,
+                                                final ComponentLog verificationLogger,
+                                                final Map<String, String> variables) {
+        final List<ConfigVerificationResult> results = new ArrayList<>();
+        final ClientConfig config;
+        try {
+            config = createClientConfig(context);
+        } catch (Exception e) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Configuration")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("Failed to initialize client configuration: " + e.getMessage())
+                    .build());
+            return results;
+        }
+
+        // Step 1: Authentication
+        String authHeader = null;
+        boolean authSuccess = true;
+        try {
+            switch (config.strategy()) {
+                case OAUTH2_PROVIDER -> {
+                    if (config.oauth2Provider() == null) {
+                        results.add(new ConfigVerificationResult.Builder()
+                                .verificationStepName("Authentication")
+                                .outcome(ConfigVerificationResult.Outcome.FAILED)
+                                .explanation("OAuth2 Access Token Provider is not configured or not available")
+                                .build());
+                        authSuccess = false;
+                    } else {
+                        AccessToken details = config.oauth2Provider().getAccessDetails();
+                        if (details == null || details.getAccessToken() == null || details.getAccessToken().isBlank()) {
+                            results.add(new ConfigVerificationResult.Builder()
+                                    .verificationStepName("Authentication")
+                                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                                    .explanation("OAuth2 Access Token Provider returned an empty access token")
+                                    .build());
+                            authSuccess = false;
+                        } else {
+                            authHeader = "Bearer " + details.getAccessToken().trim();
+                            results.add(new ConfigVerificationResult.Builder()
+                                    .verificationStepName("Authentication")
+                                    .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                                    .explanation("Successfully obtained OAuth2 access token from controller service")
+                                    .build());
+                        }
+                    }
+                }
+                case OAUTH2_CLIENT_CREDENTIALS -> {
+                    if (config.tokenManager() == null) {
+                        results.add(new ConfigVerificationResult.Builder()
+                                .verificationStepName("Authentication")
+                                .outcome(ConfigVerificationResult.Outcome.FAILED)
+                                .explanation("OAuth2 Client Credentials properties (Endpoint, Client ID, Client Secret) are incomplete")
+                                .build());
+                        authSuccess = false;
+                    } else {
+                        String token = config.tokenManager().getAccessToken();
+                        authHeader = "Bearer " + token;
+                        results.add(new ConfigVerificationResult.Builder()
+                                .verificationStepName("Authentication")
+                                .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                                .explanation("Successfully acquired OAuth2 access token via client_credentials grant")
+                                .build());
+                    }
+                }
+                case BASIC -> {
+                    authHeader = config.staticAuthorization();
+                    results.add(new ConfigVerificationResult.Builder()
+                            .verificationStepName("Authentication")
+                            .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                            .explanation("HTTP Basic authentication credentials configured")
+                            .build());
+                }
+                case BEARER -> {
+                    authHeader = config.staticAuthorization();
+                    results.add(new ConfigVerificationResult.Builder()
+                            .verificationStepName("Authentication")
+                            .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                            .explanation("Bearer token configured")
+                            .build());
+                }
+                case NONE -> {
+                    results.add(new ConfigVerificationResult.Builder()
+                            .verificationStepName("Authentication")
+                            .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                            .explanation("No authentication configured")
+                            .build());
+                }
+            }
+        } catch (Exception e) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Authentication")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("Failed to acquire authentication credentials: " + e.getMessage())
+                    .build());
+            authSuccess = false;
+        }
+
+        // Step 2: Operaton Connectivity
+        if (!authSuccess) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Operaton Connectivity")
+                    .outcome(ConfigVerificationResult.Outcome.SKIPPED)
+                    .explanation("Skipped due to authentication failure")
+                    .build());
+            return results;
+        }
+
+        String versionUrl = config.baseUrl() + "/version";
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(versionUrl))
+                .timeout(config.requestTimeout())
+                .header("Accept", "application/json")
+                .GET();
+        if (authHeader != null) {
+            requestBuilder.header("Authorization", authHeader);
+        }
+
+        try {
+            HttpResponse<String> response = config.client().send(requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int statusCode = response.statusCode();
+            if (statusCode == 200) {
+                String version = "unknown";
+                try {
+                    JsonNode versionNode = mapper.readTree(response.body());
+                    if (versionNode != null && versionNode.has("version")) {
+                        version = versionNode.get("version").asText();
+                    }
+                } catch (Exception ignored) {
+                }
+                results.add(new ConfigVerificationResult.Builder()
+                        .verificationStepName("Operaton Connectivity")
+                        .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                        .explanation("Successfully connected to Operaton REST API (version " + version + ")")
+                        .build());
+            } else if (statusCode == 401 || statusCode == 403) {
+                results.add(new ConfigVerificationResult.Builder()
+                        .verificationStepName("Operaton Connectivity")
+                        .outcome(ConfigVerificationResult.Outcome.FAILED)
+                        .explanation("Credentials rejected by Operaton REST API (HTTP " + statusCode + ")")
+                        .build());
+            } else {
+                results.add(new ConfigVerificationResult.Builder()
+                        .verificationStepName("Operaton Connectivity")
+                        .outcome(ConfigVerificationResult.Outcome.FAILED)
+                        .explanation("Operaton REST API returned HTTP " + statusCode + ": " + errorMessage(response.body()))
+                        .build());
+            }
+        } catch (IOException e) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Operaton Connectivity")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("Failed to connect to Operaton REST API: " + e.getMessage())
+                    .build());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Operaton Connectivity")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("Verification was interrupted")
+                    .build());
+        }
+
+        return results;
     }
 
     private void startLockExtension(final ConfigurationContext context) {
@@ -800,6 +997,78 @@ public class StandardOperatonExternalTaskService extends AbstractControllerServi
             return mapper.readTree(responseBody);
         } catch (JsonProcessingException e) {
             throw new OperatonException("POST " + path + " returned invalid JSON", status, e);
+        }
+    }
+
+    @Override
+    public long countTasks(String topicName) throws OperatonException {
+        if (topicName == null || topicName.isBlank()) {
+            throw new OperatonException("Topic name is missing", 0);
+        }
+        String encodedTopic = URLEncoder.encode(topicName, StandardCharsets.UTF_8);
+        String path = "/external-task/count?topicName=" + encodedTopic + "&notLocked=true";
+        JsonNode node = get(path, requestTimeout, true);
+        if (node != null && node.has("count")) {
+            return node.get("count").asLong();
+        }
+        return 0L;
+    }
+
+    private JsonNode get(String path, Duration timeout, boolean retryOnUnauthorized)
+            throws OperatonException {
+        HttpClient httpClient = client;
+        if (httpClient == null) {
+            throw new OperatonException("Controller service is not enabled", 0);
+        }
+
+        String authHeader = getAuthorizationHeader();
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(timeout)
+                .header("Accept", "application/json")
+                .GET();
+        if (authHeader != null) {
+            request.header("Authorization", authHeader);
+        }
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new OperatonException("GET " + path + " failed: " + e.getMessage(), 0, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new OperatonException("GET " + path + " was interrupted", 0, e);
+        }
+
+        int status = response.statusCode();
+        if (status == 401 && retryOnUnauthorized) {
+            OAuth2AccessTokenProvider provider = this.oauth2Provider;
+            OAuth2TokenManager tm = this.tokenManager;
+            if (provider != null) {
+                provider.refreshAccessDetails();
+                return get(path, timeout, false);
+            } else if (tm != null) {
+                String usedToken = authHeader != null && authHeader.startsWith("Bearer ")
+                        ? authHeader.substring(7).trim() : null;
+                tm.invalidate(usedToken);
+                return get(path, timeout, false);
+            }
+        }
+
+        String responseBody = response.body();
+        if (status < 200 || status >= 300) {
+            throw new OperatonException("GET " + path + " returned " + status + ": "
+                    + errorMessage(responseBody), status);
+        }
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return mapper.readTree(responseBody);
+        } catch (JsonProcessingException e) {
+            throw new OperatonException("GET " + path + " returned invalid JSON", status, e);
         }
     }
 

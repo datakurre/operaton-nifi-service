@@ -91,6 +91,13 @@ To prevent tasks from timing out during long-running batch, database, or externa
 - **Cluster & Worker Affinity**: Task locks in Operaton are bound to a specific `Worker ID`. The node that fetched the task performs all renewals.
 - **State Persistence**: Tracked tasks are stored in the service's local state, allowing extensions to resume seamlessly following a clean NiFi restart.
 
+### Configuration Verification (Verify)
+
+`StandardOperatonExternalTaskService` implements `VerifiableControllerService` to support NiFi's interactive **Verify** button in the configuration dialog before enabling the service:
+
+1. **Authentication**: Verifies that credentials can be obtained (or, when using an OAuth2 Access Token Provider, retrieves an access token from the referenced controller service).
+2. **Operaton Connectivity**: Uses a temporary HTTP client to perform an authenticated `GET {Operaton REST URL}/version`. On success, reports the connected Operaton engine version. If credentials are rejected (HTTP 401 or 403) or the server is unreachable, reports a clear failure explanation.
+
 ---
 
 ## 3. Processors Reference
@@ -118,6 +125,13 @@ Polls Operaton for external tasks matching a configured topic, acquires locks, a
 | **Business Key** | *(none)* | No | Filters tasks by process instance business key. |
 | **Process Definition Key** | *(none)* | No | Filters tasks by BPMN process definition key. |
 | **Tenant IDs** | *(none)* | No | Comma-separated list of tenant IDs to filter by. |
+
+#### Configuration Verification (Verify)
+
+`FetchAndLockExternalTasks` implements `VerifiableProcessor` to support pre-flight verification in the NiFi UI without locking tasks or starting worker threads:
+
+1. **Lock Duration**: Verifies that `Lock Duration` is configured to at least 3 seconds. Shorter durations are rejected because the controller service's automatic background lock extender cannot safely renew leases before expiration.
+2. **Pending Tasks**: Queries `GET {Operaton REST URL}/external-task/count?topicName={topicName}&notLocked=true` through the configured `OperatonExternalTaskService`. Reports the count of unlocked tasks currently waiting in the Operaton engine. A count of 0 is successful and provides an informational reminder to check topic naming if tasks were expected.
 
 ---
 

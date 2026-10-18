@@ -1,5 +1,6 @@
 package org.operaton.bpm.extension.nifi.processor;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -13,14 +14,17 @@ import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.components.ConfigVerificationResult;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
+import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
+import org.apache.nifi.processor.VerifiableProcessor;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.operaton.bpm.extension.nifi.controller.ExternalTask;
@@ -61,7 +65,8 @@ import org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService;
                 description = "BPMN extension properties when Include Extension Properties is true"),
         @WritesAttribute(attribute = "mime.type", description = "application/json")
 })
-public class FetchAndLockExternalTasks extends AbstractProcessor {
+public class FetchAndLockExternalTasks extends AbstractProcessor
+        implements VerifiableProcessor {
 
     public static final PropertyDescriptor SERVICE = AbstractExternalTaskProcessor.SERVICE;
 
@@ -365,5 +370,87 @@ public class FetchAndLockExternalTasks extends AbstractProcessor {
         if (value != null) {
             attributes.put(key, value.toString());
         }
+    }
+
+    @Override
+    public List<ConfigVerificationResult> verify(final ProcessContext context,
+                                                final ComponentLog verificationLogger,
+                                                final Map<String, String> variables) {
+        final List<ConfigVerificationResult> results = new ArrayList<>();
+
+        // Step 1: Lock Duration
+        Long lockDurationMs = (variables == null
+                ? context.getProperty(LOCK_DURATION).evaluateAttributeExpressions()
+                : context.getProperty(LOCK_DURATION).evaluateAttributeExpressions(variables))
+                .asTimePeriod(TimeUnit.MILLISECONDS);
+        if (lockDurationMs == null || lockDurationMs < 3000) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Lock Duration")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("Lock Duration must be at least 3 seconds"
+                            + (lockDurationMs == null ? "" : " (was " + lockDurationMs + " ms)")
+                            + "; shorter locks cannot be automatically extended before expiring")
+                    .build());
+        } else {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Lock Duration")
+                    .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                    .explanation("Lock Duration is valid (" + lockDurationMs + " ms)")
+                    .build());
+        }
+
+        // Step 2: Pending Tasks
+        OperatonExternalTaskService service = context.getProperty(SERVICE)
+                .asControllerService(OperatonExternalTaskService.class);
+        if (service == null) {
+            results.add(new ConfigVerificationResult.Builder()
+                    .verificationStepName("Pending Tasks")
+                    .outcome(ConfigVerificationResult.Outcome.FAILED)
+                    .explanation("External Task Service is not configured")
+                    .build());
+        } else {
+            String topicName = (variables == null
+                    ? context.getProperty(TOPIC_NAME).evaluateAttributeExpressions()
+                    : context.getProperty(TOPIC_NAME).evaluateAttributeExpressions(variables))
+                    .getValue();
+            if (topicName == null || topicName.isBlank()) {
+                results.add(new ConfigVerificationResult.Builder()
+                        .verificationStepName("Pending Tasks")
+                        .outcome(ConfigVerificationResult.Outcome.FAILED)
+                        .explanation("Topic Name is not configured")
+                        .build());
+            } else {
+                try {
+                    long count = service.countTasks(topicName);
+                    if (count > 0) {
+                        results.add(new ConfigVerificationResult.Builder()
+                                .verificationStepName("Pending Tasks")
+                                .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                                .explanation("Found " + count + " pending unlocked task(s) ready for topic '" + topicName + "'")
+                                .build());
+                    } else {
+                        results.add(new ConfigVerificationResult.Builder()
+                                .verificationStepName("Pending Tasks")
+                                .outcome(ConfigVerificationResult.Outcome.SUCCESSFUL)
+                                .explanation("Found 0 pending tasks for topic '" + topicName + "'. Check that the topic name matches the BPMN process model if tasks were expected.")
+                                .build());
+                    }
+                } catch (UnsupportedOperationException e) {
+                    results.add(new ConfigVerificationResult.Builder()
+                            .verificationStepName("Pending Tasks")
+                            .outcome(ConfigVerificationResult.Outcome.SKIPPED)
+                            .explanation("Configured External Task Service does not support task counting")
+                            .build());
+                } catch (Exception e) {
+                    results.add(new ConfigVerificationResult.Builder()
+                            .verificationStepName("Pending Tasks")
+                            .outcome(ConfigVerificationResult.Outcome.FAILED)
+                            .explanation("Failed to query pending tasks for topic '" + topicName + "': " + e.getMessage())
+                            .build());
+                }
+            }
+        }
+
+        return results;
     }
 }

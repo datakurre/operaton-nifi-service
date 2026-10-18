@@ -21,6 +21,8 @@ public class MockExternalTaskService extends AbstractControllerService
 
     final List<Call> calls = new ArrayList<>();
     final List<ExternalTask> tasks = new ArrayList<>();
+    Long pendingTaskCount;
+    boolean throwUnsupportedOnCount = false;
     OperatonException failure;
 
     @Override
@@ -87,5 +89,14 @@ public class MockExternalTaskService extends AbstractControllerService
     @Override
     public void unlock(String taskId) throws OperatonException {
         record("unlock", taskId);
+    }
+
+    @Override
+    public long countTasks(String topicName) throws OperatonException {
+        record("countTasks", topicName);
+        if (throwUnsupportedOnCount) {
+            throw new UnsupportedOperationException("countTasks not supported");
+        }
+        return pendingTaskCount != null ? pendingTaskCount : tasks.size();
     }
 }
