@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -597,363 +598,171 @@ def configure_vault_parameter_context(nifi_addr, vault_addr, vault_token, root_i
     return False
 
 
-def _create_processor(nifi_addr, root_id, name, proc_type, bundle, x, y, props, auto_term=None):
-    config = {"properties": props}
-    if auto_term:
-        config["autoTerminatedRelationships"] = auto_term
-    res = request(
-        f"{nifi_addr}/nifi-api/process-groups/{root_id}/processors",
-        data={
-            "revision": {"version": 0},
-            "component": {
-                "type": proc_type,
-                "name": name,
-                "position": {"x": x, "y": y},
-                "bundle": bundle,
-                "config": config,
-            },
-        },
-        method="POST",
-    )
-    return res["id"]
-
-
-def _connect(nifi_addr, root_id, src_id, dst_id, relationships, bends=None):
-    comp = {
-        "source": {"id": src_id, "type": "PROCESSOR", "groupId": root_id},
-        "destination": {"id": dst_id, "type": "PROCESSOR", "groupId": root_id},
-        "selectedRelationships": relationships,
-    }
-    if bends:
-        comp["bends"] = bends
-    request(
-        f"{nifi_addr}/nifi-api/process-groups/{root_id}/connections",
-        data={"revision": {"version": 0}, "component": comp},
-        method="POST",
-    )
 
 
 def configure_nifi_flow(nifi_addr, root_id, operaton_service_id, force_rebuild=False):
     flow_content = request(f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}")
-    processors = flow_content["processGroupFlow"]["flow"]["processors"]
-    connections = flow_content["processGroupFlow"]["flow"]["connections"]
-    existing_names = {p["component"]["name"] for p in processors}
+    process_groups = flow_content["processGroupFlow"]["flow"].get("processGroups", [])
+    existing_pg = next(
+        (pg for pg in process_groups if pg["component"]["name"] == "Order Fulfillment Demo"),
+        None,
+    )
 
-    # Canvases built before lock extension became automatic still have the removed ExtendExternalTaskLock
-    if not force_rebuild and "Extract Order Attributes" in existing_names and "ExtendExternalTaskLock" not in existing_names:
+    if not force_rebuild and existing_pg:
         print("Multi-stage Order Fulfillment NiFi flow is already configured.")
         return
 
+    # Clean up existing process group if rebuilding
+    if existing_pg:
+        pg_id = existing_pg["id"]
+        try:
+            request(
+                f"{nifi_addr}/nifi-api/flow/process-groups/{pg_id}",
+                data={"id": pg_id, "state": "STOPPED"},
+                method="PUT",
+            )
+            time.sleep(1)
+        except Exception:
+            pass
+
+        # Disable services in existing PG
+        try:
+            pg_svcs = request(f"{nifi_addr}/nifi-api/flow/process-groups/{pg_id}/controller-services")
+            for s in pg_svcs.get("controllerServices", []):
+                if s["component"]["state"] != "DISABLED":
+                    sid = s["id"]
+                    ver = s["revision"]["version"]
+                    request(
+                        f"{nifi_addr}/nifi-api/controller-services/{sid}/run-status",
+                        data={"revision": {"version": ver}, "state": "DISABLED"},
+                        method="PUT",
+                    )
+            time.sleep(1)
+        except Exception:
+            pass
+
+        try:
+            pg_fresh = request(f"{nifi_addr}/nifi-api/process-groups/{pg_id}")
+            ver = pg_fresh["revision"]["version"] if pg_fresh else existing_pg["revision"]["version"]
+            request(f"{nifi_addr}/nifi-api/process-groups/{pg_id}?version={ver}", method="DELETE")
+        except Exception as e:
+            print(f"Notice cleaning up existing Order Fulfillment process group: {e}")
+
+    # Also clean up any legacy loose processors on root from previous runs
+    processors = flow_content["processGroupFlow"]["flow"].get("processors", [])
+    connections = flow_content["processGroupFlow"]["flow"].get("connections", [])
+    legacy_order_procs = {
+        "Extract Order Attributes", "Validate Order Rules", "HandleValidationError",
+        "Enrich Order Metadata", "CompleteExternalTask", "FetchAndLockExternalTasks",
+        "Extract Fraud Check Attributes", "Evaluate Fraud Risk", "HandleFraudBpmnError",
+        "Complete Fraud Check", "Fetch Fraud Check Tasks", "Fetch Payment Tasks",
+        "Fetch Shipment Tasks", "Complete Payment & Shipment", "HandleExternalTaskFailure",
+    }
+    has_legacy = any(p["component"]["name"] in legacy_order_procs for p in processors)
+    if has_legacy:
+        for conn in connections:
+            try:
+                cid = conn["id"]
+                drop = request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests", data=b"", method="POST")
+                if drop and "dropRequest" in drop:
+                    drop_id = drop["dropRequest"]["id"]
+                    request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests/{drop_id}", method="DELETE")
+            except Exception:
+                pass
+            try:
+                c_fresh = request(f"{nifi_addr}/nifi-api/connections/{conn['id']}")
+                ver = c_fresh["revision"]["version"] if c_fresh else conn["revision"]["version"]
+                request(f"{nifi_addr}/nifi-api/connections/{conn['id']}?version={ver}", method="DELETE")
+            except Exception:
+                pass
+        for proc in processors:
+            if proc["component"]["name"] in legacy_order_procs:
+                try:
+                    p_fresh = request(f"{nifi_addr}/nifi-api/processors/{proc['id']}")
+                    ver = p_fresh["revision"]["version"] if p_fresh else proc["revision"]["version"]
+                    request(f"{nifi_addr}/nifi-api/processors/{proc['id']}?version={ver}", method="DELETE")
+                except Exception:
+                    pass
+
+    # Upload flow definition JSON
+    devenv_root = os.environ.get("DEVENV_ROOT", "/workspace/operaton-nifi-service")
+    flow_file = os.path.join(devenv_root, "deployment", "nifi", "order-fulfillment.json")
+    if not os.path.exists(flow_file):
+        raise FileNotFoundError(f"Flow definition file not found: {flow_file}")
+
+    with open(flow_file, "rb") as f:
+        flow_bytes = f.read()
+
+    boundary = f"----NiFiFormBoundary{uuid.uuid4().hex}"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="groupName"\r\n\r\n'
+        f"Order Fulfillment Demo\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="positionX"\r\n\r\n'
+        f"0\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="positionY"\r\n\r\n'
+        f"0\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="clientId"\r\n\r\n'
+        f"{uuid.uuid4()}\r\n"
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="order-fulfillment.json"\r\n'
+        f"Content-Type: application/json\r\n\r\n"
+    ).encode("utf-8") + flow_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    upload_headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    res = request(
+        f"{nifi_addr}/nifi-api/process-groups/{root_id}/process-groups/upload",
+        data=body,
+        headers=upload_headers,
+        method="POST",
+    )
+    pg_id = res["id"]
+
+    # Bind Parameter Context 'operaton' if available
+    contexts = request(f"{nifi_addr}/nifi-api/flow/parameter-contexts")
+    operaton_ctx = next(
+        (c for c in contexts.get("parameterContexts", []) if c["component"]["name"] == "operaton"),
+        None,
+    )
+    if operaton_ctx:
+        try:
+            pg = request(f"{nifi_addr}/nifi-api/process-groups/{pg_id}")
+            request(
+                f"{nifi_addr}/nifi-api/process-groups/{pg_id}",
+                data={
+                    "revision": pg["revision"],
+                    "component": {
+                        "id": pg_id,
+                        "parameterContext": {"id": operaton_ctx["id"]},
+                    },
+                },
+                method="PUT",
+            )
+        except Exception as e:
+            print(f"Notice binding parameter context to process group: {e}")
+
+    # Enable controller services in the uploaded process group
     try:
+        svcs = request(f"{nifi_addr}/nifi-api/flow/process-groups/{pg_id}/controller-services")
+        for s in svcs.get("controllerServices", []):
+            if s["component"]["state"] == "DISABLED":
+                ensure_service_enabled(nifi_addr, s["id"])
+    except Exception as e:
+        print(f"Notice enabling process group controller services: {e}")
+
+    # Start the process group
+    try:
+        time.sleep(1)
         request(
-            f"{nifi_addr}/nifi-api/flow/process-groups/{root_id}",
-            data={"id": root_id, "state": "STOPPED"},
+            f"{nifi_addr}/nifi-api/flow/process-groups/{pg_id}",
+            data={"id": pg_id, "state": "RUNNING"},
             method="PUT",
         )
-        time.sleep(1)
-    except Exception:
-        pass
-
-    for conn in connections:
-        try:
-            cid = conn["id"]
-            drop = request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests", data=b"", method="POST")
-            if drop and "dropRequest" in drop:
-                drop_id = drop["dropRequest"]["id"]
-                request(f"{nifi_addr}/nifi-api/flowfile-queues/{cid}/drop-requests/{drop_id}", method="DELETE")
-        except Exception:
-            pass
-        try:
-            c_fresh = request(f"{nifi_addr}/nifi-api/connections/{conn['id']}")
-            ver = c_fresh["revision"]["version"] if c_fresh else conn["revision"]["version"]
-            request(
-                f"{nifi_addr}/nifi-api/connections/{conn['id']}?version={ver}",
-                method="DELETE",
-            )
-        except Exception:
-            pass
-    for proc in processors:
-        try:
-            p_fresh = request(f"{nifi_addr}/nifi-api/processors/{proc['id']}")
-            ver = p_fresh["revision"]["version"] if p_fresh else proc["revision"]["version"]
-            request(
-                f"{nifi_addr}/nifi-api/processors/{proc['id']}?version={ver}",
-                method="DELETE",
-            )
-        except Exception:
-            pass
-
-    operaton_bundle = {
-        "group": "org.operaton.bpm.extension.nifi",
-        "artifact": "operaton-nifi-processors-nar",
-        "version": "1.0-SNAPSHOT",
-    }
-    standard_bundle = {
-        "group": "org.apache.nifi",
-        "artifact": "nifi-standard-nar",
-        "version": "2.11.0",
-    }
-    update_attr_bundle = {
-        "group": "org.apache.nifi",
-        "artifact": "nifi-update-attribute-nar",
-        "version": "2.11.0",
-    }
-
-    # --- Column 1 (x=80): Stage 1 - Order Validation & Enrichment (topic: demo) ---
-    fetch_validate = _create_processor(
-        nifi_addr,
-        root_id,
-        "FetchAndLockExternalTasks",
-        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
-        operaton_bundle,
-        80,
-        40,
-        {
-            "External Task Service": operaton_service_id,
-            "Topic Name": "demo",
-        },
-    )
-    eval_json = _create_processor(
-        nifi_addr,
-        root_id,
-        "Extract Order Attributes",
-        "org.apache.nifi.processors.standard.EvaluateJsonPath",
-        standard_bundle,
-        80,
-        240,
-        {
-            "Destination": "flowfile-attribute",
-            "order.id": "$.orderId",
-            "order.amount": "$.amount",
-            "order.customer": "$.customer",
-        },
-        auto_term=["failure", "unmatched"],
-    )
-    route_validate = _create_processor(
-        nifi_addr,
-        root_id,
-        "Validate Order Rules",
-        "org.apache.nifi.processors.standard.RouteOnAttribute",
-        standard_bundle,
-        80,
-        440,
-        {
-            "Routing Strategy": "Route to Property name",
-            "invalid": "${order.amount:toNumber():le(0):or(${order.id:isEmpty()})}",
-        },
-    )
-    enrich_order = _create_processor(
-        nifi_addr,
-        root_id,
-        "Enrich Order Metadata",
-        "org.apache.nifi.processors.attributes.UpdateAttribute",
-        update_attr_bundle,
-        80,
-        640,
-        {
-            "validation.status": "VALIDATED",
-            "validation.worker": "nifi-worker",
-        },
-    )
-    complete_validate = _create_processor(
-        nifi_addr,
-        root_id,
-        "CompleteExternalTask",
-        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
-        operaton_bundle,
-        80,
-        840,
-        {
-            "External Task Service": operaton_service_id,
-        },
-        auto_term=["success"],
-    )
-    bpmn_validation_error = _create_processor(
-        nifi_addr,
-        root_id,
-        "HandleValidationError",
-        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
-        operaton_bundle,
-        80,
-        1040,
-        {
-            "External Task Service": operaton_service_id,
-            "Error Code": "VALIDATION_ERROR",
-            "Error Message": "Order ${order.id} failed validation rules",
-        },
-        auto_term=["success"],
-    )
-
-    # --- Column 2 (x=580): Stage 2 - High-Value Fraud & Compliance (topic: order-fraud-check) ---
-    fetch_fraud = _create_processor(
-        nifi_addr,
-        root_id,
-        "Fetch Fraud Check Tasks",
-        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
-        operaton_bundle,
-        580,
-        40,
-        {
-            "External Task Service": operaton_service_id,
-            "Topic Name": "order-fraud-check",
-        },
-    )
-    eval_fraud_json = _create_processor(
-        nifi_addr,
-        root_id,
-        "Extract Fraud Check Attributes",
-        "org.apache.nifi.processors.standard.EvaluateJsonPath",
-        standard_bundle,
-        580,
-        240,
-        {
-            "Destination": "flowfile-attribute",
-            "order.id": "$.orderId",
-            "order.amount": "$.amount",
-            "order.customer": "$.customer",
-        },
-        auto_term=["failure", "unmatched"],
-    )
-    route_fraud = _create_processor(
-        nifi_addr,
-        root_id,
-        "Evaluate Fraud Risk",
-        "org.apache.nifi.processors.standard.RouteOnAttribute",
-        standard_bundle,
-        580,
-        640,
-        {
-            "Routing Strategy": "Route to Property name",
-            "fraud_suspected": "${order.amount:toNumber():gt(10000)}",
-        },
-    )
-    complete_fraud = _create_processor(
-        nifi_addr,
-        root_id,
-        "Complete Fraud Check",
-        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
-        operaton_bundle,
-        580,
-        840,
-        {
-            "External Task Service": operaton_service_id,
-        },
-        auto_term=["success"],
-    )
-    bpmn_fraud_error = _create_processor(
-        nifi_addr,
-        root_id,
-        "HandleFraudBpmnError",
-        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
-        operaton_bundle,
-        580,
-        1040,
-        {
-            "External Task Service": operaton_service_id,
-            "Error Code": "FRAUD_DETECTED",
-            "Error Message": "Order ${order.id} escalated to Manual Order Review",
-        },
-        auto_term=["success"],
-    )
-
-    # --- Column 3 (x=1080 & x=1520): Stage 3 - Payment, Shipment & Incident Handling ---
-    fetch_payment = _create_processor(
-        nifi_addr,
-        root_id,
-        "Fetch Payment Tasks",
-        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
-        operaton_bundle,
-        1080,
-        40,
-        {
-            "External Task Service": operaton_service_id,
-            "Topic Name": "order-payment",
-        },
-    )
-    fetch_shipment = _create_processor(
-        nifi_addr,
-        root_id,
-        "Fetch Shipment Tasks",
-        "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
-        operaton_bundle,
-        1520,
-        40,
-        {
-            "External Task Service": operaton_service_id,
-            "Topic Name": "order-shipment",
-        },
-    )
-    complete_fulfillment = _create_processor(
-        nifi_addr,
-        root_id,
-        "Complete Payment & Shipment",
-        "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
-        operaton_bundle,
-        1300,
-        340,
-        {
-            "External Task Service": operaton_service_id,
-        },
-        auto_term=["success"],
-    )
-    handle_failure = _create_processor(
-        nifi_addr,
-        root_id,
-        "HandleExternalTaskFailure",
-        "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskFailure",
-        operaton_bundle,
-        1300,
-        740,
-        {
-            "External Task Service": operaton_service_id,
-            "Default Retries": "3",
-            "Retry Timeout": "1 min",
-        },
-        auto_term=["success", "failure", "retry"],
-    )
-
-    # Connect Column 1
-    _connect(nifi_addr, root_id, fetch_validate, eval_json, ["success"])
-    _connect(nifi_addr, root_id, eval_json, route_validate, ["matched"])
-    _connect(nifi_addr, root_id, route_validate, enrich_order, ["unmatched"])
-    _connect(nifi_addr, root_id, enrich_order, complete_validate, ["success"])
-    _connect(nifi_addr, root_id, route_validate, bpmn_validation_error, ["invalid"])
-    _connect(
-        nifi_addr,
-        root_id,
-        bpmn_validation_error,
-        handle_failure,
-        ["failure", "retry"],
-        bends=[{"x": 480, "y": 1090}],
-    )
-    _connect(
-        nifi_addr,
-        root_id,
-        complete_validate,
-        handle_failure,
-        ["failure", "retry"],
-        bends=[{"x": 760, "y": 890}],
-    )
-
-    # Connect Column 2
-    _connect(nifi_addr, root_id, fetch_fraud, eval_fraud_json, ["success"])
-    _connect(nifi_addr, root_id, eval_fraud_json, route_fraud, ["matched"])
-    _connect(nifi_addr, root_id, route_fraud, complete_fraud, ["unmatched"])
-    _connect(nifi_addr, root_id, route_fraud, bpmn_fraud_error, ["fraud_suspected"])
-    _connect(nifi_addr, root_id, complete_fraud, handle_failure, ["failure", "retry"])
-    _connect(
-        nifi_addr,
-        root_id,
-        bpmn_fraud_error,
-        handle_failure,
-        ["failure", "retry"],
-        bends=[{"x": 980, "y": 1090}],
-    )
-
-    # Connect Column 3 & Failure Handling
-    _connect(nifi_addr, root_id, fetch_payment, complete_fulfillment, ["success"])
-    _connect(nifi_addr, root_id, fetch_shipment, complete_fulfillment, ["success"])
-    _connect(nifi_addr, root_id, complete_fulfillment, handle_failure, ["failure", "retry"])
+    except Exception as e:
+        print(f"Notice starting process group: {e}")
 
     print("Created 3-stage Order Fulfillment & Fraud Compliance flow in NiFi.")
 

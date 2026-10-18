@@ -1,0 +1,2265 @@
+{
+  "flowContents": {
+    "identifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+    "name": "Order Fulfillment Demo",
+    "comments": "Multi-stage Order Fulfillment & Fraud Compliance demo flow for Operaton",
+    "position": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "processGroups": [],
+    "remoteProcessGroups": [],
+    "processors": [
+      {
+        "identifier": "55ce2151-2d9a-3d25-9030-2d94a9be117a",
+        "name": "Fetch Payment Tasks",
+        "comments": "",
+        "position": {
+          "x": 1080.0,
+          "y": 40.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Process Definition ID": null,
+          "Business Key": null,
+          "Max Tasks": "10",
+          "Process Definition Version Tag": null,
+          "Deserialize Values": "true",
+          "Variables": null,
+          "Variables Format": "SIMPLE",
+          "Topic Name": "order-payment",
+          "Include Extension Properties": "false",
+          "Process Definition Key": null,
+          "Lock Duration": "5 min",
+          "Long Polling Timeout": "0 sec",
+          "Local Variables": "false",
+          "Tenant IDs": null,
+          "Use Priority": "true",
+          "Without Tenant ID": "false"
+        },
+        "propertyDescriptors": {
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition ID": {
+            "name": "Process Definition ID",
+            "displayName": "Process Definition ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Business Key": {
+            "name": "Business Key",
+            "displayName": "Business Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max Tasks": {
+            "name": "Max Tasks",
+            "displayName": "Max Tasks",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Version Tag": {
+            "name": "Process Definition Version Tag",
+            "displayName": "Process Definition Version Tag",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Deserialize Values": {
+            "name": "Deserialize Values",
+            "displayName": "Deserialize Values",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables": {
+            "name": "Variables",
+            "displayName": "Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Topic Name": {
+            "name": "Topic Name",
+            "displayName": "Topic Name",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Include Extension Properties": {
+            "name": "Include Extension Properties",
+            "displayName": "Include Extension Properties",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Key": {
+            "name": "Process Definition Key",
+            "displayName": "Process Definition Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Lock Duration": {
+            "name": "Lock Duration",
+            "displayName": "Lock Duration",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Long Polling Timeout": {
+            "name": "Long Polling Timeout",
+            "displayName": "Long Polling Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Tenant IDs": {
+            "name": "Tenant IDs",
+            "displayName": "Tenant IDs",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Use Priority": {
+            "name": "Use Priority",
+            "displayName": "Use Priority",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Without Tenant ID": {
+            "name": "Without Tenant ID",
+            "displayName": "Without Tenant ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "5 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "5396e040-76ba-3dd0-abfa-6cf038a14259",
+        "name": "Fetch Fraud Check Tasks",
+        "comments": "",
+        "position": {
+          "x": 580.0,
+          "y": 40.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Process Definition ID": null,
+          "Business Key": null,
+          "Max Tasks": "10",
+          "Process Definition Version Tag": null,
+          "Deserialize Values": "true",
+          "Variables": null,
+          "Variables Format": "SIMPLE",
+          "Topic Name": "order-fraud-check",
+          "Include Extension Properties": "false",
+          "Process Definition Key": null,
+          "Lock Duration": "5 min",
+          "Long Polling Timeout": "0 sec",
+          "Local Variables": "false",
+          "Tenant IDs": null,
+          "Use Priority": "true",
+          "Without Tenant ID": "false"
+        },
+        "propertyDescriptors": {
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition ID": {
+            "name": "Process Definition ID",
+            "displayName": "Process Definition ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Business Key": {
+            "name": "Business Key",
+            "displayName": "Business Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max Tasks": {
+            "name": "Max Tasks",
+            "displayName": "Max Tasks",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Version Tag": {
+            "name": "Process Definition Version Tag",
+            "displayName": "Process Definition Version Tag",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Deserialize Values": {
+            "name": "Deserialize Values",
+            "displayName": "Deserialize Values",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables": {
+            "name": "Variables",
+            "displayName": "Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Topic Name": {
+            "name": "Topic Name",
+            "displayName": "Topic Name",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Include Extension Properties": {
+            "name": "Include Extension Properties",
+            "displayName": "Include Extension Properties",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Key": {
+            "name": "Process Definition Key",
+            "displayName": "Process Definition Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Lock Duration": {
+            "name": "Lock Duration",
+            "displayName": "Lock Duration",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Long Polling Timeout": {
+            "name": "Long Polling Timeout",
+            "displayName": "Long Polling Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Tenant IDs": {
+            "name": "Tenant IDs",
+            "displayName": "Tenant IDs",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Use Priority": {
+            "name": "Use Priority",
+            "displayName": "Use Priority",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Without Tenant ID": {
+            "name": "Without Tenant ID",
+            "displayName": "Without Tenant ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "5 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "ccd6955f-8bee-305f-9c27-f1b6b3d29ee5",
+        "name": "FetchAndLockExternalTasks",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 40.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Process Definition ID": null,
+          "Business Key": null,
+          "Max Tasks": "10",
+          "Process Definition Version Tag": null,
+          "Deserialize Values": "true",
+          "Variables": null,
+          "Variables Format": "SIMPLE",
+          "Topic Name": "demo",
+          "Include Extension Properties": "false",
+          "Process Definition Key": null,
+          "Lock Duration": "5 min",
+          "Long Polling Timeout": "0 sec",
+          "Local Variables": "false",
+          "Tenant IDs": null,
+          "Use Priority": "true",
+          "Without Tenant ID": "false"
+        },
+        "propertyDescriptors": {
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition ID": {
+            "name": "Process Definition ID",
+            "displayName": "Process Definition ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Business Key": {
+            "name": "Business Key",
+            "displayName": "Business Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max Tasks": {
+            "name": "Max Tasks",
+            "displayName": "Max Tasks",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Version Tag": {
+            "name": "Process Definition Version Tag",
+            "displayName": "Process Definition Version Tag",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Deserialize Values": {
+            "name": "Deserialize Values",
+            "displayName": "Deserialize Values",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables": {
+            "name": "Variables",
+            "displayName": "Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Topic Name": {
+            "name": "Topic Name",
+            "displayName": "Topic Name",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Include Extension Properties": {
+            "name": "Include Extension Properties",
+            "displayName": "Include Extension Properties",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Key": {
+            "name": "Process Definition Key",
+            "displayName": "Process Definition Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Lock Duration": {
+            "name": "Lock Duration",
+            "displayName": "Lock Duration",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Long Polling Timeout": {
+            "name": "Long Polling Timeout",
+            "displayName": "Long Polling Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Tenant IDs": {
+            "name": "Tenant IDs",
+            "displayName": "Tenant IDs",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Use Priority": {
+            "name": "Use Priority",
+            "displayName": "Use Priority",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Without Tenant ID": {
+            "name": "Without Tenant ID",
+            "displayName": "Without Tenant ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "5 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "662ed9d8-a91a-3fcc-a2f2-0d8462ce2104",
+        "name": "Extract Order Attributes",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 240.0
+        },
+        "type": "org.apache.nifi.processors.standard.EvaluateJsonPath",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.11.0"
+        },
+        "properties": {
+          "Destination": "flowfile-attribute",
+          "Max String Length": "20 MB",
+          "order.amount": "$.amount",
+          "Return Type": "auto-detect",
+          "Null Value Representation": "empty string",
+          "order.id": "$.orderId",
+          "order.customer": "$.customer",
+          "Path Not Found Behavior": "ignore"
+        },
+        "propertyDescriptors": {
+          "Destination": {
+            "name": "Destination",
+            "displayName": "Destination",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max String Length": {
+            "name": "Max String Length",
+            "displayName": "Max String Length",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "order.amount": {
+            "name": "order.amount",
+            "displayName": "order.amount",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "Return Type": {
+            "name": "Return Type",
+            "displayName": "Return Type",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Null Value Representation": {
+            "name": "Null Value Representation",
+            "displayName": "Null Value Representation",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "order.id": {
+            "name": "order.id",
+            "displayName": "order.id",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "order.customer": {
+            "name": "order.customer",
+            "displayName": "order.customer",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "Path Not Found Behavior": {
+            "name": "Path Not Found Behavior",
+            "displayName": "Path Not Found Behavior",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "failure",
+          "unmatched"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+        "name": "HandleExternalTaskFailure",
+        "comments": "",
+        "position": {
+          "x": 1300.0,
+          "y": 740.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskFailure",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Retry Timeout": "1 min",
+          "Variables Format": "NONE",
+          "Error Message": "${operaton.error.message:replaceEmpty('Processing failed in Apache NiFi')}",
+          "Default Retries": "3",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Error Details": null,
+          "Retries": null,
+          "Local Variables": "false",
+          "External Task ID": "${operaton.externalTask.id}"
+        },
+        "propertyDescriptors": {
+          "Retry Timeout": {
+            "name": "Retry Timeout",
+            "displayName": "Retry Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Message": {
+            "name": "Error Message",
+            "displayName": "Error Message",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Default Retries": {
+            "name": "Default Retries",
+            "displayName": "Default Retries",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Details": {
+            "name": "Error Details",
+            "displayName": "Error Details",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Retries": {
+            "name": "Retries",
+            "displayName": "Retries",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success",
+          "failure",
+          "retry"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "2cb1add2-e182-3b85-9506-64b37ab6fb01",
+        "name": "Complete Payment & Shipment",
+        "comments": "",
+        "position": {
+          "x": 1300.0,
+          "y": 340.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Variables Format": "SIMPLE",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Local Variables": "false",
+          "External Task ID": "${operaton.externalTask.id}"
+        },
+        "propertyDescriptors": {
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "03b935cd-e012-3c79-ad39-07a32600a634",
+        "name": "Evaluate Fraud Risk",
+        "comments": "",
+        "position": {
+          "x": 580.0,
+          "y": 640.0
+        },
+        "type": "org.apache.nifi.processors.standard.RouteOnAttribute",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.11.0"
+        },
+        "properties": {
+          "Routing Strategy": "Route to Property name",
+          "fraud_suspected": "${order.amount:toNumber():gt(10000)}"
+        },
+        "propertyDescriptors": {
+          "Routing Strategy": {
+            "name": "Routing Strategy",
+            "displayName": "Routing Strategy",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "fraud_suspected": {
+            "name": "fraud_suspected",
+            "displayName": "fraud_suspected",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 25,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "466ceb55-9380-30ac-aa6b-f88bb260faa5",
+        "name": "HandleValidationError",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 1040.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Variables Format": "NONE",
+          "Error Message": "Order ${order.id} failed validation rules",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "External Task ID": "${operaton.externalTask.id}",
+          "Error Code": "VALIDATION_ERROR"
+        },
+        "propertyDescriptors": {
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Message": {
+            "name": "Error Message",
+            "displayName": "Error Message",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Code": {
+            "name": "Error Code",
+            "displayName": "Error Code",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "d803f56c-2aad-3d0b-ae83-85c0411be618",
+        "name": "HandleFraudBpmnError",
+        "comments": "",
+        "position": {
+          "x": 580.0,
+          "y": 1040.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.HandleExternalTaskBpmnError",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Variables Format": "NONE",
+          "Error Message": "Order ${order.id} escalated to Manual Order Review",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "External Task ID": "${operaton.externalTask.id}",
+          "Error Code": "FRAUD_DETECTED"
+        },
+        "propertyDescriptors": {
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Message": {
+            "name": "Error Message",
+            "displayName": "Error Message",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Error Code": {
+            "name": "Error Code",
+            "displayName": "Error Code",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "ce8a98f7-ec55-3956-931d-b81a0dd2c85d",
+        "name": "CompleteExternalTask",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 840.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Variables Format": "SIMPLE",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Local Variables": "false",
+          "External Task ID": "${operaton.externalTask.id}"
+        },
+        "propertyDescriptors": {
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "7d1ca8f0-20f6-3e96-a6c3-32fa09258c33",
+        "name": "Enrich Order Metadata",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 640.0
+        },
+        "type": "org.apache.nifi.processors.attributes.UpdateAttribute",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-update-attribute-nar",
+          "version": "2.11.0"
+        },
+        "properties": {
+          "Delete Attributes Expression": null,
+          "Store State": "Do not store state",
+          "validation.status": "VALIDATED",
+          "validation.worker": "nifi-worker",
+          "Cache Value Lookup Cache Size": "100",
+          "Stateful Variables Initial Value": null
+        },
+        "propertyDescriptors": {
+          "Delete Attributes Expression": {
+            "name": "Delete Attributes Expression",
+            "displayName": "Delete Attributes Expression",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Store State": {
+            "name": "Store State",
+            "displayName": "Store State",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "validation.status": {
+            "name": "validation.status",
+            "displayName": "validation.status",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "validation.worker": {
+            "name": "validation.worker",
+            "displayName": "validation.worker",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "Cache Value Lookup Cache Size": {
+            "name": "Cache Value Lookup Cache Size",
+            "displayName": "Cache Value Lookup Cache Size",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Stateful Variables Initial Value": {
+            "name": "Stateful Variables Initial Value",
+            "displayName": "Stateful Variables Initial Value",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 25,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "e8efdd22-72c5-3366-bbc2-95120e07d355",
+        "name": "Fetch Shipment Tasks",
+        "comments": "",
+        "position": {
+          "x": 1520.0,
+          "y": 40.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.FetchAndLockExternalTasks",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Process Definition ID": null,
+          "Business Key": null,
+          "Max Tasks": "10",
+          "Process Definition Version Tag": null,
+          "Deserialize Values": "true",
+          "Variables": null,
+          "Variables Format": "SIMPLE",
+          "Topic Name": "order-shipment",
+          "Include Extension Properties": "false",
+          "Process Definition Key": null,
+          "Lock Duration": "5 min",
+          "Long Polling Timeout": "0 sec",
+          "Local Variables": "false",
+          "Tenant IDs": null,
+          "Use Priority": "true",
+          "Without Tenant ID": "false"
+        },
+        "propertyDescriptors": {
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition ID": {
+            "name": "Process Definition ID",
+            "displayName": "Process Definition ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Business Key": {
+            "name": "Business Key",
+            "displayName": "Business Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max Tasks": {
+            "name": "Max Tasks",
+            "displayName": "Max Tasks",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Version Tag": {
+            "name": "Process Definition Version Tag",
+            "displayName": "Process Definition Version Tag",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Deserialize Values": {
+            "name": "Deserialize Values",
+            "displayName": "Deserialize Values",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables": {
+            "name": "Variables",
+            "displayName": "Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Topic Name": {
+            "name": "Topic Name",
+            "displayName": "Topic Name",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Include Extension Properties": {
+            "name": "Include Extension Properties",
+            "displayName": "Include Extension Properties",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Process Definition Key": {
+            "name": "Process Definition Key",
+            "displayName": "Process Definition Key",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Lock Duration": {
+            "name": "Lock Duration",
+            "displayName": "Lock Duration",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Long Polling Timeout": {
+            "name": "Long Polling Timeout",
+            "displayName": "Long Polling Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Tenant IDs": {
+            "name": "Tenant IDs",
+            "displayName": "Tenant IDs",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Use Priority": {
+            "name": "Use Priority",
+            "displayName": "Use Priority",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Without Tenant ID": {
+            "name": "Without Tenant ID",
+            "displayName": "Without Tenant ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "5 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "323cd226-d8af-3adc-8c08-baeac91da3c9",
+        "name": "Validate Order Rules",
+        "comments": "",
+        "position": {
+          "x": 80.0,
+          "y": 440.0
+        },
+        "type": "org.apache.nifi.processors.standard.RouteOnAttribute",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.11.0"
+        },
+        "properties": {
+          "Routing Strategy": "Route to Property name",
+          "invalid": "${order.amount:toNumber():le(0):or(${order.id:isEmpty()})}"
+        },
+        "propertyDescriptors": {
+          "Routing Strategy": {
+            "name": "Routing Strategy",
+            "displayName": "Routing Strategy",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "invalid": {
+            "name": "invalid",
+            "displayName": "invalid",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 25,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "edbbecba-d25c-365c-b615-280e34b9b66b",
+        "name": "Complete Fraud Check",
+        "comments": "",
+        "position": {
+          "x": 580.0,
+          "y": 840.0
+        },
+        "type": "org.operaton.bpm.extension.nifi.processor.CompleteExternalTask",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-processors-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "Variables Format": "SIMPLE",
+          "External Task Service": "58701957-bc83-3b93-995d-de78aef81713",
+          "Local Variables": "false",
+          "External Task ID": "${operaton.externalTask.id}"
+        },
+        "propertyDescriptors": {
+          "Variables Format": {
+            "name": "Variables Format",
+            "displayName": "Variables Format",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task Service": {
+            "name": "External Task Service",
+            "displayName": "External Task Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Local Variables": {
+            "name": "Local Variables",
+            "displayName": "Local Variables",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "External Task ID": {
+            "name": "External Task ID",
+            "displayName": "External Task ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "success"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "c9096ad9-a47f-3110-b91f-451b72cd1f72",
+        "name": "Extract Fraud Check Attributes",
+        "comments": "",
+        "position": {
+          "x": 580.0,
+          "y": 240.0
+        },
+        "type": "org.apache.nifi.processors.standard.EvaluateJsonPath",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.11.0"
+        },
+        "properties": {
+          "Destination": "flowfile-attribute",
+          "Max String Length": "20 MB",
+          "order.amount": "$.amount",
+          "Return Type": "auto-detect",
+          "Null Value Representation": "empty string",
+          "order.id": "$.orderId",
+          "order.customer": "$.customer",
+          "Path Not Found Behavior": "ignore"
+        },
+        "propertyDescriptors": {
+          "Destination": {
+            "name": "Destination",
+            "displayName": "Destination",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Max String Length": {
+            "name": "Max String Length",
+            "displayName": "Max String Length",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "order.amount": {
+            "name": "order.amount",
+            "displayName": "order.amount",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "Return Type": {
+            "name": "Return Type",
+            "displayName": "Return Type",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Null Value Representation": {
+            "name": "Null Value Representation",
+            "displayName": "Null Value Representation",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "order.id": {
+            "name": "order.id",
+            "displayName": "order.id",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "order.customer": {
+            "name": "order.customer",
+            "displayName": "order.customer",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": true
+          },
+          "Path Not Found Behavior": {
+            "name": "Path Not Found Behavior",
+            "displayName": "Path Not Found Behavior",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          }
+        },
+        "style": {},
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "executionNode": "ALL",
+        "penaltyDuration": "30 sec",
+        "yieldDuration": "1 sec",
+        "bulletinLevel": "WARN",
+        "runDurationMillis": 0,
+        "concurrentlySchedulableTaskCount": 1,
+        "autoTerminatedRelationships": [
+          "failure",
+          "unmatched"
+        ],
+        "scheduledState": "ENABLED",
+        "retryCount": 10,
+        "retriedRelationships": [],
+        "backoffMechanism": "PENALIZE_FLOWFILE",
+        "maxBackoffPeriod": "10 mins",
+        "componentType": "PROCESSOR",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      }
+    ],
+    "inputPorts": [],
+    "outputPorts": [],
+    "connections": [
+      {
+        "identifier": "9f4d5fb2-de6e-300e-af23-489945079ba5",
+        "source": {
+          "id": "323cd226-d8af-3adc-8c08-baeac91da3c9",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Validate Order Rules",
+          "comments": ""
+        },
+        "destination": {
+          "id": "7d1ca8f0-20f6-3e96-a6c3-32fa09258c33",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Enrich Order Metadata",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "unmatched"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "65f3044b-66b9-3079-860f-207679890073",
+        "source": {
+          "id": "ce8a98f7-ec55-3956-931d-b81a0dd2c85d",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "CompleteExternalTask",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [
+          {
+            "x": 760.0,
+            "y": 890.0
+          }
+        ],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "c9ec1011-f184-30ab-afbc-868ef0ac52a3",
+        "source": {
+          "id": "03b935cd-e012-3c79-ad39-07a32600a634",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Evaluate Fraud Risk",
+          "comments": ""
+        },
+        "destination": {
+          "id": "edbbecba-d25c-365c-b615-280e34b9b66b",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Complete Fraud Check",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "unmatched"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "f32aa88e-82d8-3f76-92e5-c83a20bfc0a9",
+        "source": {
+          "id": "ccd6955f-8bee-305f-9c27-f1b6b3d29ee5",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "FetchAndLockExternalTasks",
+          "comments": ""
+        },
+        "destination": {
+          "id": "662ed9d8-a91a-3fcc-a2f2-0d8462ce2104",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Extract Order Attributes",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "ca8c270e-7560-365e-a682-b7b7442e91c1",
+        "source": {
+          "id": "466ceb55-9380-30ac-aa6b-f88bb260faa5",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleValidationError",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [
+          {
+            "x": 480.0,
+            "y": 1090.0
+          }
+        ],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "887433f0-d123-3818-9d9b-3db5c6b27732",
+        "source": {
+          "id": "5396e040-76ba-3dd0-abfa-6cf038a14259",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Fetch Fraud Check Tasks",
+          "comments": ""
+        },
+        "destination": {
+          "id": "c9096ad9-a47f-3110-b91f-451b72cd1f72",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Extract Fraud Check Attributes",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "020fa672-900a-3df7-9942-0e530dcd7202",
+        "source": {
+          "id": "55ce2151-2d9a-3d25-9030-2d94a9be117a",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Fetch Payment Tasks",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2cb1add2-e182-3b85-9506-64b37ab6fb01",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Complete Payment & Shipment",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "aaf963e4-4b39-30eb-b051-670112e14d8a",
+        "source": {
+          "id": "edbbecba-d25c-365c-b615-280e34b9b66b",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Complete Fraud Check",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "11aacd3a-0221-3af6-b0ac-d0cf4f258348",
+        "source": {
+          "id": "2cb1add2-e182-3b85-9506-64b37ab6fb01",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Complete Payment & Shipment",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "20b3060d-4b5a-3507-ba03-41dbec1865e6",
+        "source": {
+          "id": "d803f56c-2aad-3d0b-ae83-85c0411be618",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleFraudBpmnError",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2a4da8da-8c15-33be-8881-3e7aac5af502",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleExternalTaskFailure",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "failure",
+          "retry"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [
+          {
+            "x": 980.0,
+            "y": 1090.0
+          }
+        ],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "947c51c7-c4ce-3aea-a983-20da9c54c242",
+        "source": {
+          "id": "c9096ad9-a47f-3110-b91f-451b72cd1f72",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Extract Fraud Check Attributes",
+          "comments": ""
+        },
+        "destination": {
+          "id": "03b935cd-e012-3c79-ad39-07a32600a634",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Evaluate Fraud Risk",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "matched"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "4d3f5efe-2f5b-3038-b9b8-8e593b18658b",
+        "source": {
+          "id": "323cd226-d8af-3adc-8c08-baeac91da3c9",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Validate Order Rules",
+          "comments": ""
+        },
+        "destination": {
+          "id": "466ceb55-9380-30ac-aa6b-f88bb260faa5",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleValidationError",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "invalid"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "5ee9e3af-c80c-3fc3-9a2c-0a87f59c9143",
+        "source": {
+          "id": "662ed9d8-a91a-3fcc-a2f2-0d8462ce2104",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Extract Order Attributes",
+          "comments": ""
+        },
+        "destination": {
+          "id": "323cd226-d8af-3adc-8c08-baeac91da3c9",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Validate Order Rules",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "matched"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "cbe95933-1b6b-3adc-9e0e-176f1c87d885",
+        "source": {
+          "id": "e8efdd22-72c5-3366-bbc2-95120e07d355",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Fetch Shipment Tasks",
+          "comments": ""
+        },
+        "destination": {
+          "id": "2cb1add2-e182-3b85-9506-64b37ab6fb01",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Complete Payment & Shipment",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "a15f30f7-85ab-3689-bcfd-1bfee1398663",
+        "source": {
+          "id": "03b935cd-e012-3c79-ad39-07a32600a634",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Evaluate Fraud Risk",
+          "comments": ""
+        },
+        "destination": {
+          "id": "d803f56c-2aad-3d0b-ae83-85c0411be618",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "HandleFraudBpmnError",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "fraud_suspected"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      },
+      {
+        "identifier": "781188dc-26fe-3dc8-8813-498aef0e6d8d",
+        "source": {
+          "id": "7d1ca8f0-20f6-3e96-a6c3-32fa09258c33",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "Enrich Order Metadata",
+          "comments": ""
+        },
+        "destination": {
+          "id": "ce8a98f7-ec55-3956-931d-b81a0dd2c85d",
+          "type": "PROCESSOR",
+          "groupId": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b",
+          "name": "CompleteExternalTask",
+          "comments": ""
+        },
+        "labelIndex": 1,
+        "zIndex": 0,
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "flowFileExpiration": "0 sec",
+        "prioritizers": [],
+        "bends": [],
+        "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+        "loadBalanceCompression": "DO_NOT_COMPRESS",
+        "componentType": "CONNECTION",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      }
+    ],
+    "labels": [],
+    "funnels": [],
+    "controllerServices": [
+      {
+        "identifier": "58701957-bc83-3b93-995d-de78aef81713",
+        "name": "StandardOperatonExternalTaskService",
+        "comments": "",
+        "type": "org.operaton.bpm.extension.nifi.controller.StandardOperatonExternalTaskService",
+        "bundle": {
+          "group": "org.operaton.bpm.extension.nifi",
+          "artifact": "operaton-nifi-service-nar",
+          "version": "1.0-SNAPSHOT"
+        },
+        "properties": {
+          "SSL Context Service": null,
+          "Authentication Strategy": "BASIC",
+          "Username": "#{username}",
+          "Request Timeout": "30 sec",
+          "Operaton REST URL": "#{url}",
+          "Worker ID": "#{worker_id}",
+          "Max Lock Lifetime": "1 hour",
+          "OAuth2 Access Token Provider": null,
+          "Proxy Configuration Service": null,
+          "Password": "#{password}"
+        },
+        "propertyDescriptors": {
+          "SSL Context Service": {
+            "name": "SSL Context Service",
+            "displayName": "SSL Context Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Authentication Strategy": {
+            "name": "Authentication Strategy",
+            "displayName": "Authentication Strategy",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Username": {
+            "name": "Username",
+            "displayName": "Username",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Request Timeout": {
+            "name": "Request Timeout",
+            "displayName": "Request Timeout",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Operaton REST URL": {
+            "name": "Operaton REST URL",
+            "displayName": "Operaton REST URL",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Worker ID": {
+            "name": "Worker ID",
+            "displayName": "Worker ID",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Bearer Token": {
+            "name": "Bearer Token",
+            "displayName": "Bearer Token",
+            "identifiesControllerService": false,
+            "sensitive": true,
+            "dynamic": false
+          },
+          "Max Lock Lifetime": {
+            "name": "Max Lock Lifetime",
+            "displayName": "Max Lock Lifetime",
+            "identifiesControllerService": false,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "OAuth2 Access Token Provider": {
+            "name": "OAuth2 Access Token Provider",
+            "displayName": "OAuth2 Access Token Provider",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Proxy Configuration Service": {
+            "name": "Proxy Configuration Service",
+            "displayName": "Proxy Configuration Service",
+            "identifiesControllerService": true,
+            "sensitive": false,
+            "dynamic": false
+          },
+          "Password": {
+            "name": "Password",
+            "displayName": "Password",
+            "identifiesControllerService": false,
+            "sensitive": true,
+            "dynamic": false
+          }
+        },
+        "controllerServiceApis": [
+          {
+            "type": "org.operaton.bpm.extension.nifi.controller.OperatonExternalTaskService",
+            "bundle": {
+              "group": "org.operaton.bpm.extension.nifi",
+              "artifact": "operaton-nifi-service-api-nar",
+              "version": "1.0-SNAPSHOT"
+            }
+          }
+        ],
+        "scheduledState": "ENABLED",
+        "bulletinLevel": "WARN",
+        "componentType": "CONTROLLER_SERVICE",
+        "groupIdentifier": "2a272e00-72a3-3a49-9c6e-8d85d07b8d8b"
+      }
+    ],
+    "parameterContextName": "operaton",
+    "defaultFlowFileExpiration": "0 sec",
+    "defaultBackPressureObjectThreshold": 10000,
+    "defaultBackPressureDataSizeThreshold": "1 GB",
+    "scheduledState": "ENABLED",
+    "executionEngine": "INHERITED",
+    "maxConcurrentTasks": 1,
+    "statelessFlowTimeout": "1 min",
+    "flowFileConcurrency": "UNBOUNDED",
+    "flowFileOutboundPolicy": "STREAM_WHEN_AVAILABLE",
+    "componentType": "PROCESS_GROUP"
+  },
+  "externalControllerServices": {},
+  "parameterContexts": {
+    "operaton": {
+      "name": "operaton",
+      "parameters": [
+        {
+          "name": "password",
+          "sensitive": true,
+          "provided": true
+        },
+        {
+          "name": "worker_id",
+          "sensitive": false,
+          "provided": true,
+          "value": "nifi-worker"
+        },
+        {
+          "name": "username",
+          "sensitive": false,
+          "provided": true,
+          "value": "demo"
+        },
+        {
+          "name": "url",
+          "sensitive": false,
+          "provided": true,
+          "value": "http://localhost:8080/engine-rest"
+        }
+      ],
+      "inheritedParameterContexts": [],
+      "parameterProvider": null,
+      "parameterGroupName": "operaton",
+      "synchronized": true,
+      "componentType": "PARAMETER_CONTEXT"
+    }
+  },
+  "flowEncodingVersion": "1.0",
+  "parameterProviders": {},
+  "latest": false
+}
